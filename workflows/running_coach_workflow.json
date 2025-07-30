@@ -1,0 +1,653 @@
+{
+  "name": "Running Coach",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1600,
+        448
+      ],
+      "id": "8181fc0a-148a-4556-9619-997e448253f7",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "mode": "chooseBranch"
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -704,
+        448
+      ],
+      "id": "bbab3a2d-65f6-4afd-bc79-d5792a915a4a",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  const a = item.json;\n  return {\n    json: {\n      id:              a.id,\n      athleteId:       a.icu_athlete_id,\n      date:            new Date(a.start_date),         // ISO 8601\n      type:            a.type,\n      duration:        a.elapsed_time,       // seconds\n      distance:        a.distance,           // meters (or null)\n      calories:        a.calories,\n      trimp:           a.trimp,\n      ctl:             a.icu_ctl,\n      atl:             a.icu_atl,\n      rampRate:        a.rampRate ?? (a.icu_ctl - a.icu_atl),\n      avgHeartRate:    a.average_heartrate,\n      maxHeartRate:    a.max_heartrate,\n      interval_summary: a.interval_summary,  // e.g. [\"1x...\",\"3x...\"]\n      sportInfo:       a.sportInfo           // you can leave the array or map to just types\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1152,
+        352
+      ],
+      "id": "3f360e1c-10e3-49a8-b4a3-73e4b48479f3",
+      "name": "Shape Activities"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  const w = item.json;\n  return {\n    json: {\n      id:         w.id,                            // e.g. \"2025-07-10\"\n      athleteId:  w.icu_athlete_id,                // your athlete key\n      date:       new Date(w.updated),                       // ISO timestamp of the record\n      ctl:        w.ctl,                           // chronic training load\n      atl:        w.atl,                           // acute training load\n      rampRate:   w.rampRate ?? (w.ctl - w.atl),   // change in load\n      ctlLoad:    w.ctlLoad,                       // daily CTL “load”\n      atlLoad:    w.atlLoad,                       // daily ATL “load”\n      restingHR:  w.restingHR,                     // recovery HR\n      hrv:        w.hrv,                           // HRV\n      sleepScore: w.sleepScore,                    // sleep quality\n      steps:      w.steps,                         // daily step count\n      weight:     w.weight                         // body weight (if available)\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1152,
+        544
+      ],
+      "id": "2cc3212b-59ec-4b12-bb69-be867071d7ab",
+      "name": "Shape Wellness"
+    },
+    {
+      "parameters": {
+        "url": "={{ `https://intervals.icu/api/v1/athlete/${$env.INTERVALS_ICU_ATHLETE_ID}/wellness` }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "oldest",
+              "value": "={{ $now.minus({ days: 7 }).toISODate() }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ `Basic ${$env.INTERVALS_ICU_BASIC_AUTH}` }}"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {}
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1376,
+        544
+      ],
+      "id": "43f25252-a6d2-4350-9005-faef42df185c",
+      "name": "GET Wellness"
+    },
+    {
+      "parameters": {
+        "url": "={{ `https://intervals.icu/api/v1/athlete/${$env.INTERVALS_ICU_ATHLETE_ID}/activities` }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "oldest",
+              "value": "={{ $now.minus({ days: 7 }).toISO({ includeOffset: false }) }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ `Basic ${$env.INTERVALS_ICU_BASIC_AUTH}` }}"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {}
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1376,
+        352
+      ],
+      "id": "14d91aca-0f01-43a4-be95-8852730b31fe",
+      "name": "GET Activities"
+    },
+    {
+      "parameters": {
+        "operation": "findOneAndUpdate",
+        "collection": "activities",
+        "fields": "id, athleteId, date, type, duration, distance, calories, trimp, ctl, atl, rampRate, avgHeartRate, maxHeartRate, interval_summary, sportInfo",
+        "upsert": true,
+        "options": {
+          "dateFields": "date"
+        }
+      },
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.2,
+      "position": [
+        -928,
+        352
+      ],
+      "id": "3598eb29-2010-4428-b678-eaa40eeb6806",
+      "name": "Activities DB",
+      "alwaysOutputData": true,
+      "credentials": {
+        "mongoDb": {
+          "id": "8KyRHmD3ScRn2PPF",
+          "name": "MongoDB account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "findOneAndUpdate",
+        "collection": "wellness",
+        "fields": "id, athleteId, date, ctl, atl, rampRate, ctlLoad, atlLoad, restingHR, hrv, sleepScore, steps, weight",
+        "upsert": true,
+        "options": {
+          "dateFields": "date"
+        }
+      },
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.2,
+      "position": [
+        -928,
+        544
+      ],
+      "id": "ad492890-49d5-4580-9278-7272c4a00be6",
+      "name": "Wellness DB",
+      "credentials": {
+        "mongoDb": {
+          "id": "8KyRHmD3ScRn2PPF",
+          "name": "MongoDB account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Function node: Compute weekly_metrics for the CURRENT week (Monday–Sunday)\n// Input: one item whose JSON has { activities: [...], wellness: [...] }\n\nconst { activities: acts, wellness: well } = items[0].json;\n\n// 1️⃣ Compute current week boundaries (Monday 00:00 to Sunday 23:59:59)\nconst today = new Date();\nconst day = today.getDay();               // 0=Sun, 1=Mon, … 6=Sat\nconst diffToMonday = (day + 6) % 7;\nconst monday = new Date(today);\nmonday.setDate(today.getDate() - diffToMonday);\nmonday.setHours(0,0,0,0);\nconst sunday = new Date(monday);\nsunday.setDate(monday.getDate() + 6);\nsunday.setHours(23,59,59,999);\n\n// 2️⃣ Helper: average over non-null\nconst avg = arr => arr.length\n  ? arr.reduce((sum, v) => sum + v, 0) / arr.length\n  : 0;\n\n// 3️⃣ Filter this week’s activities\nconst inWeek = a => {\n  const d = new Date(a.start_date);\n  return d >= monday && d <= sunday;\n};\nconst weekActs = acts.filter(inWeek);\n\n// 4️⃣ Run, ride & strength metrics\nconst runActs      = weekActs.filter(a => a.type === 'Run');\nconst rideActs     = weekActs.filter(a => /Ride/.test(a.type));\nconst strengthActs = weekActs.filter(a => a.type === 'WeightTraining');\n\nconst runCount     = runActs.length;\nconst runDistance  = runActs.reduce((s,a) => s + (a.distance||0), 0);\nconst runTime      = runActs.reduce((s,a) => s + (a.elapsed_time||0), 0);\n\nconst rideCount    = rideActs.length;\nconst rideDistance = rideActs.reduce((s,a) => s + (a.distance||0), 0);\nconst rideTime     = rideActs.reduce((s,a) => s + (a.elapsed_time||0), 0);\nconst rideTrimp    = rideActs.reduce((s,a) => s + (a.trimp||0), 0);\n\nconst strengthCount = strengthActs.length;\nconst strengthTrimp = strengthActs.reduce((s,a) => s + (a.trimp||0), 0);\n\n// 5️⃣ Session‐type counts by keyword in activity name\nconst vo2Sessions   = runActs.filter(a => /vo2/i.test(a.name)).length;\nconst tempoSessions = runActs.filter(a => /tempo|threshold|umbral/i.test(a.name)).length;\nconst longRuns      = runActs.filter(a => /long/i.test(a.name)).length;\n\n// 6️⃣ Wellness this week (filter by id = YYYY-MM-DD)\nconst wellWeek = well.filter(w => {\n  const d = new Date(w.id);\n  return d >= monday && d <= sunday;\n});\n\nconst ctlMean        = avg(wellWeek.map(w=>w.ctl||0));\nconst atlMean        = avg(wellWeek.map(w=>w.atl||0));\nconst rampRateMean   = avg(wellWeek.map(w=>w.rampRate||0));\nconst restHrMean     = avg(wellWeek.map(w=>w.restingHR||0));\nconst stepsMean      = avg(wellWeek.map(w=>w.steps||0));\nconst sleepScoreMean = avg(wellWeek.map(w=>w.sleepScore||0));\nconst hrvMean        = avg(wellWeek.map(w=>w.hrv||0));\n\n// 7️⃣ Identify athleteId (from any activity)\nconst athleteId = acts.length\n  ? acts[0].icu_athlete_id\n  : null;\n\n// 8️⃣ Build weekly_metrics record\nconst weekStart = monday.toISOString().slice(0,10);\nconst weekEnd   = sunday.toISOString().slice(0,10);\nconst now       = new Date().toISOString();\n\nreturn [{\n  json: {\n    athleteId,\n    weekStart,\n    weekEnd,\n\n    runCount,\n    runDistance,\n    runTime,\n\n    rideCount,\n    rideDistance,\n    rideTime,\n    rideTrimp,\n\n    vo2Sessions,\n    tempoSessions,\n    longRuns,\n\n    strengthCount,\n    strengthTrimp,\n\n    ctlMean,\n    atlMean,\n    rampRateMean,\n\n    restHrMean,\n    stepsMean,\n    sleepScoreMean,\n    hrvMean,\n\n    createdAt: now,\n    updatedAt: now\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        96
+      ],
+      "id": "7196222d-0aea-4faa-8189-fb0bbb8d9379",
+      "name": "Shape Weekly Metrics"
+    },
+    {
+      "parameters": {
+        "operation": "findOneAndUpdate",
+        "collection": "weekly_metrics",
+        "updateKey": "weekStart",
+        "fields": "athleteId, weekStart, weekEnd, runCount, runDistance, runTime, rideCount, rideDistance, rideTime, rideTrimp, vo2Sessions, tempoSessions, longRuns, strengthCount, strengthTrimp, ctlMean, atlMean, rampRateMean, restHrMean, stepsMean, sleepScoreMean, hrvMean, createdAt, updatedAt",
+        "upsert": true,
+        "options": {
+          "dateFields": "createdAt, updatedAt"
+        }
+      },
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "8e7ba141-3fdf-4a40-a2d2-50d1705d6aff",
+      "name": "Weekly Metrics DB",
+      "alwaysOutputData": true,
+      "credentials": {
+        "mongoDb": {
+          "id": "8KyRHmD3ScRn2PPF",
+          "name": "MongoDB account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "collection": "weekly_metrics",
+        "options": {
+          "sort": "{ \"weekStart\": -1 }"
+        },
+        "query": "={\n  \"weekStart\": {\n    \"$lt\": \"{{ $json.weekStart }}\"\n  }\n}\n"
+      },
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        192
+      ],
+      "id": "2f2bc56d-2b5f-46ca-adf1-ad302a398f4e",
+      "name": "Read Previous Weeks",
+      "alwaysOutputData": true,
+      "credentials": {
+        "mongoDb": {
+          "id": "8KyRHmD3ScRn2PPF",
+          "name": "MongoDB account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        224,
+        96
+      ],
+      "id": "46575de3-0c9d-4381-ba47-c93f9625b9cd",
+      "name": "Merge Current & History"
+    },
+    {
+      "parameters": {
+        "jsCode": "// El primer ítem es el current\nconst current = items[0].json;\n\n// Los siguientes ítems son tu histórico\nconst pastWeeks = items.slice(1).map(i => i.json);\n\nreturn [{\n  json: {\n    current,       // todas las métricas y el prompt de esta semana\n    history: pastWeeks  // tu histórico ya preparado\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        96
+      ],
+      "id": "e9f1806a-cb9c-4797-9969-ab99ad3442eb",
+      "name": "Map Current + History"
+    },
+    {
+      "parameters": {
+        "jsCode": "// in a Function node (Run Once for All Items)\n\nconst activities = $items(\"GET Activities\").map(item => item.json);\nconst wellness   = $items(\"GET Wellness\"  ).map(item => item.json);\n\nreturn [\n  {\n    json: {\n      activities,\n      wellness\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        448
+      ],
+      "id": "b677badd-1fbf-4f1d-a40d-1648c59871fa",
+      "name": "Map Activities + Wellness"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        640,
+        448
+      ],
+      "id": "c90609f0-5298-4df0-9c53-22d304b3a8c1",
+      "name": "Merge Request Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Prompt Builder para generar el JSON limpio que le enviaremos a OpenAI\n * Incluye semana, fechas y solicita al modelo los campos necesarios.\n */\n\n// —————————————— CONFIGURACIÓN ——————————————\n\n// Fecha de inicio de tu plan (puedes ajustarla)\nconst programStartDate = new Date('2025-07-19');\n\n// Fecha de la competición\nconst raceDate = new Date('2026-02-15');\n\n// ——————————— CÁLCULOS DE FECHAS ———————————\n\nconst today = new Date();\nconst msPerWeek = 7 * 24 * 60 * 60 * 1000;\nconst weeksSinceStart = Math.floor((today - programStartDate) / msPerWeek) + 1;\nconst weeksToRace = Math.ceil((raceDate - today) / msPerWeek);\nconst totalPlanWeeks = weeksSinceStart + weeksToRace;\n\n// —————————— DETERMINACIÓN DE FASE ——————————\n\nlet phaseName, phaseNote;\nif (weeksSinceStart <= Math.floor(totalPlanWeeks * 0.3)) {\n  phaseName = 'Base';\n  phaseNote = 'Rodajes suaves y fuerza general.';\n} else if (weeksSinceStart <= Math.floor(totalPlanWeeks * 0.7)) {\n  phaseName = 'Desarrollo';\n  phaseNote = 'Interválicos, tempo runs y fuerza específica.';\n} else if (weeksToRace > 2) {\n  phaseName = 'Específica';\n  phaseNote = 'Ritmo objetivo, simulaciones de competición.';\n} else {\n  phaseName = 'Taper';\n  phaseNote = 'Reducción de carga manteniendo chispa.';\n}\n\n// —————————— DESCOMPOSICIÓN DE DATOS ——————————\n\nconst { current, history: rawHistory } = items[0].json;\nconst history = Array.isArray(rawHistory)\n  ? rawHistory\n      .sort((a, b) => b.weekStart.localeCompare(a.weekStart))\n      .slice(0, 4)\n  : [];\n\nconst { activities, wellness } = items[1].json;\n\n// —————————— EXTRACCIÓN DE FCMAX ——————————\n\nconst DEFAULT_FCMAX = 202;\nconst recordedMaxHR = Math.max(\n  ...activities.map(a => a.max_heartrate || 0).filter(hr => hr > 0)\n);\nconst fcMax = recordedMaxHR >= 190 ? recordedMaxHR : DEFAULT_FCMAX;\n\n// —————————— HELPERS ——————————\n\nconst avg = arr => arr.length ? arr.reduce((sum, v) => sum + v, 0) / arr.length : 0;\nconst fmt = x   => x != null ? x.toFixed(1) : '—';\n\n// —————————— MÉTRICAS SEMANA ACTUAL ——————————\n\nconst { weekStart, weekEnd } = current;\nconst ctlActs    = avg( activities.map(a => a.icu_ctl      || 0) );\nconst atlActs    = avg( activities.map(a => a.icu_atl      || 0) );\nconst rampActs   = avg( activities.map(a => a.icu_rampRate || 0) );\nconst totalTrimp = activities.reduce((s,a) => s + (a.trimp || 0), 0);\n\nconst restVals = [...activities, ...wellness]\n  .map(o => o.restingHR).filter(v => v != null);\nconst stepVals = [...activities, ...wellness]\n  .map(o => o.steps).filter(v => v != null);\n\nconst restHR   = avg(restVals);\nconst steps    = avg(stepVals);\nconst hrvWel   = avg( wellness.map(w => w.hrv        || 0) );\nconst sleepWel = avg( wellness.map(w => w.sleepScore || 0) );\n\n// —————————— CONSTRUCCIÓN DEL PROMPT (FORZAR JSON PURA) ——————————\n\nconst prompt = `\nEres mi coach experto en medio maratón (método noruego, híbrido fuerza+carrera).\n\nContexto:\n- Mitja Marató Barcelona (15‑02‑2026), objetivo 1h45m (~4:59/km).\n- Empezamos el plan el ${programStartDate.toISOString().slice(0,10)}, esta es la semana **${weeksSinceStart}** de un plan de **${totalPlanWeeks}** semanas.\n- Quedan **${weeksToRace}** semanas → Fase **${phaseName}**: ${phaseNote}\n\nResumen ${weekStart} → ${weekEnd}:\n• CTL avg: ${fmt(ctlActs)}, ATL avg: ${fmt(atlActs)}, RampRate avg: ${fmt(rampActs)}\n• TRIMP total: ${fmt(totalTrimp)}\n• FC reposo medio: ${fmt(restHR)} bpm, Pasos/día medio: ${fmt(steps)}\n• HRV avg: ${fmt(hrvWel)}, SleepScore avg: ${fmt(sleepWel)}\n\nHistorial (4 semanas anteriores):\n${history.map(h =>\n  `- Semana ${h.weekStart}: ${fmt(h.runDistance/1000)} km · ATL ${fmt(h.atlMean)} · RampRate ${fmt(h.rampRateMean)} · RHR ${fmt(h.restHrMean)}`\n).join('\\n')}\n\nPor favor genera mi plan PARA LA PRÓXIMA SEMANA siguiendo el método noruego:\n- Indica fase del plan y el objetivo de la semana.\n- **Gimnasio**: Mar, Jue y Sáb (orden: Pecho y brazos, Espalda y hombros, Piernas).\n- **Running** según carga (CTL, ATL, TRIMP; no consideres HRV/Sueño actualmente):\n  1. Sesión VO₂ máx  \n  2. Sesión tempo/umbral  \n  3. Tirada larga aeróbica  \n  4. Easy/recovery  \n\n**IMPORTANTE**:  \n- Gimnasio a las 12–13h, calcula recuperación y planifica alrededor.  \n- Usa **zonas de FC Garmin (Z1–Z5)** basadas en FCmáx=${fcMax} bpm; indica % y rango de bpm.  \n- Si dispones de LTHR (183 bpm), úsalo para definir las zonas de umbral.\n\n**Y AHORA**: Devuélveme **solo** un **JSON válido**, sin texto ni markdown adicional, con esta estructura EXACTA:\n\n\\`\\`\\`json\n{\n  \"activityPlan\": {\n    \"nextWeek\": {\n      \"phase\": string,\n      \"objective\": string,\n      \"weekStart\": string,   // e.g. \"2025-07-14\"\n      \"weekEnd\":   string    // e.g. \"2025-07-20\"\n    },\n    \"days\": [\n      {\n        \"day\": string,         // Nombre en español, ej. \"Lunes\"\n        \"date\": string,        // Fecha concreta, ej. \"2025-07-14\"\n        \"activity\": string,\n        \"distance_time\": string,\n        \"intensity\": string,\n        \"goal\": string,\n        \"note\": string\n      }\n      // …un objeto por cada día de la semana\n    ]\n  },\n  \"justification\": [ string, … ]\n}\n\\`\\`\\`\n`.trim();\n\n// —————————— RETORNO ——————————\n\nreturn [{\n  json: {\n    prompt,\n    metrics: {\n      programStartDate: programStartDate.toISOString().slice(0,10),\n      weeksSinceStart,\n      totalPlanWeeks,\n      weeksToRace,\n      phaseName,\n      weekStart,\n      weekEnd,\n      ctlActs,\n      atlActs,\n      rampActs,\n      totalTrimp,\n      restHR,\n      steps,\n      hrvWel,\n      sleepWel,\n      fcMax\n    },\n    history,\n    activities,\n    wellness\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        448
+      ],
+      "id": "76c7ae56-2f54-4c18-9fef-774b12705f5b",
+      "name": "Prompt Builder"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "GPT-4O"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.prompt }}",
+              "role": "system"
+            },
+            {
+              "content": "={{\n  `Datos de la ÚLTIMA SEMANA:\\n` +\n  `Métricas: ${JSON.stringify($json.metrics, null, 2)}\\n\\n` +\n  `Historial (semanas anteriores): ${JSON.stringify($json.history, null, 2)}`\n}}"
+            }
+          ]
+        },
+        "simplify": false,
+        "jsonOutput": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        1088,
+        448
+      ],
+      "id": "34773ad2-7d76-4f29-a297-bc1c86ddabf6",
+      "name": "Message a model",
+      "alwaysOutputData": false,
+      "credentials": {
+        "openAiApi": {
+          "id": "olyatB4PnLtBz9VL",
+          "name": "OpenAi account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "chatId": "730354404",
+        "text": "={{ $json.htmlMessage }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1712,
+        448
+      ],
+      "id": "f044dc1e-c6df-4372-8334-1dee1dc7a75f",
+      "name": "Send a text message",
+      "webhookId": "2300ed5a-c28d-45ed-93fc-3b3df686f46d",
+      "credentials": {
+        "telegramApi": {
+          "id": "hdQmaYn1B2efrJvB",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Build Telegram Message: formatea el JSON de OpenAI añadiendo rango de fechas\n * y fecha concreta de cada día, sin depender de métricas externas.\n */\n\n // 1️⃣ Extraer el contenido generado por OpenAI\nconst content = Array.isArray(items[0].json.choices)\n  ? items[0].json.choices[0].message.content\n  : items[0].json;\n\nif (!content.activityPlan || !content.justification) {\n  throw new Error(\"No se encontró `activityPlan` o `justification` en la respuesta.\");\n}\n\nconst plan  = content.activityPlan;\nconst justs = content.justification;\n\n// 2️⃣ Cabecera: rango de la semana\nconst { weekStart, weekEnd, phase, objective } = plan.nextWeek;\n\n// 3️⃣ Construir el HTML\nlet html = `🏃‍♂️ <b>Plan semanal: ${weekStart} → ${weekEnd}</b>\\n`;\nhtml += `📂 <b>Fase:</b> ${phase}\\n`;\nhtml += `🎯 <b>Objetivo:</b> ${objective}\\n\\n`;\n\nfor (const d of plan.days) {\n  html += `📅 <b>${d.day} (${d.date}) – ${d.activity}</b>\\n`;\n  html += `📏 ${d.distance_time || '—'}\\n`;\n  html += `💓 ${d.intensity || '—'}\\n`;\n  html += `🎯 ${d.goal}\\n`;\n  if (d.note) html += `📝 <i>${d.note}</i>\\n`;\n  html += `\\n`;\n}\n\nhtml += `📚 <b>Justificación</b>\\n`;\njusts.forEach((j, i) => {\n  html += `${i + 1}. ${j}\\n`;\n});\n\n// 4️⃣ Salida para el nodo Telegram\nreturn [{\n  json: {\n    htmlMessage: html.trim()\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1488,
+        448
+      ],
+      "id": "ac201b6e-375f-48f5-9b1a-656f3987aa2c",
+      "name": "Build Telegram Message"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 0 22 * * 0"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1600,
+        640
+      ],
+      "id": "a666d5c6-fc73-4016-9518-04b879e1022b",
+      "name": "Schedule Trigger"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "GET Activities",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "GET Wellness",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Map Activities + Wellness",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shape Activities": {
+      "main": [
+        [
+          {
+            "node": "Activities DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shape Wellness": {
+      "main": [
+        [
+          {
+            "node": "Wellness DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Wellness": {
+      "main": [
+        [
+          {
+            "node": "Shape Wellness",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Activities": {
+      "main": [
+        [
+          {
+            "node": "Shape Activities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shape Weekly Metrics": {
+      "main": [
+        [
+          {
+            "node": "Weekly Metrics DB",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Read Previous Weeks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Previous Weeks": {
+      "main": [
+        [
+          {
+            "node": "Merge Current & History",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Current & History": {
+      "main": [
+        [
+          {
+            "node": "Map Current + History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Current + History": {
+      "main": [
+        [
+          {
+            "node": "Merge Request Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Weekly Metrics DB": {
+      "main": [
+        [
+          {
+            "node": "Merge Current & History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Activities + Wellness": {
+      "main": [
+        [
+          {
+            "node": "Shape Weekly Metrics",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge Request Data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Request Data": {
+      "main": [
+        [
+          {
+            "node": "Prompt Builder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prompt Builder": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Build Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Telegram Message": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wellness DB": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Activities DB": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "GET Activities",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "GET Wellness",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "f7280215-ef93-4458-bec7-70cceca22a51",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "32e042aaa93a0c2717f17fdbf6d1b765a1d2543e64737ddc9ed84499712f834c"
+  },
+  "id": "Q9nTNHZ5vUBf58oI",
+  "tags": []
+}
