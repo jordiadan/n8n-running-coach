@@ -1,0 +1,9 @@
+version: 2
+updates:
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Puedes filtrar por la etiqueta de n8n:
+    allow:
+      - dependency-type: "all"

@@ -1,0 +1,30 @@
+app = "running-coach-n8n"
+primary_region = "fra"
+
+[build]
+image = "n8nio/n8n:latest"
+
+[env]
+GENERIC_TIMEZONE = "Europe/Madrid"
+N8N_BASIC_AUTH_ACTIVE = "false"
+N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS = "true"
+N8N_HOST = "0.0.0.0"
+N8N_PORT = "5678"
+N8N_PROXY_HOPS = "1"
+N8N_RUNNERS_ENABLED = "true"
+
+[[mounts]]
+destination = "/home/node/.n8n"
+source = "n8n_data"
+
+[[services]]
+internal_port = 5_678
+protocol = "tcp"
+
+  [[services.ports]]
+  handlers = [ "http" ]
+  port = 80
+
+  [[services.ports]]
+  handlers = [ "tls", "http" ]
+  port = 443
