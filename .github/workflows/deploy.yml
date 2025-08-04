@@ -29,7 +29,9 @@ jobs:
       - run: npm install -g n8n
 
       - name: Install Fly CLI
-        uses: superfly/flyctl-actions@v
+        uses: superfly/flyctl-actions@v1
+
+      - name: Deploy to Fly
         run: flyctl deploy --config fly.toml
 
       - name: Install jq
