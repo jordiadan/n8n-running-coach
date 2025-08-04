@@ -11,7 +11,6 @@ jobs:
     env:
       GENERIC_TIMEZONE: "Europe/Madrid"
       DB_TYPE: "postgres"
-
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       INTERVALS_ICU_ATHLETE_ID: ${{ secrets.INTERVALS_ICU_ATHLETE_ID }}
       INTERVALS_ICU_BASIC_AUTH: ${{ secrets.INTERVALS_ICU_BASIC_AUTH }}
@@ -20,26 +19,29 @@ jobs:
       N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-      - name: Setup Node & n8n CLI
+      - name: Setup Node.js & n8n CLI
         uses: actions/setup-node@v4
         with:
           node-version: '20'
       - run: npm install -g n8n
 
-      - name: Install Fly CLI
+      - name: Setup Fly CLI
         uses: superfly/flyctl-actions@v1
 
       - name: Deploy to Fly
         run: flyctl deploy --config fly.toml
 
       - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
 
       - name: Import n8n workflows
+        env:
+          N8N_PROTOCOL: "https"
         run: |
           HOST=$(flyctl info --json | jq -r '.Hostname')
-          export N8N_HOST=$HOST
-          export N8N_PROTOCOL=https
-          n8n import:workflow --input=workflows/*.json
+          n8n import:workflow --input=workflows/*.json --url "https://$HOST"
