@@ -29,12 +29,7 @@ jobs:
       - run: npm install -g n8n
 
       - name: Install Fly CLI
-        uses: superfly/flyctl-actions@v1
-        # pin version via args if desired
-        with:
-          args: "--version 1.4.0"
-
-      - name: Deploy to Fly
+        uses: superfly/flyctl-actions@v
         run: flyctl deploy --config fly.toml
 
       - name: Install jq
@@ -45,4 +40,4 @@ jobs:
           HOST=$(flyctl info --json | jq -r '.Hostname')
           export N8N_HOST=$HOST
           export N8N_PROTOCOL=https
-          n8n import:workflow --input=workflows/*.jsons
+          n8n import:workflow --input=workflows/*.json
