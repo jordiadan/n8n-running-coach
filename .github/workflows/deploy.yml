@@ -11,7 +11,7 @@ jobs:
     env:
       GENERIC_TIMEZONE: "Europe/Madrid"
       DB_TYPE: "postgres"
-      FLY_DEPLOY_TOKEN: ${{ secrets.FLY_DEPLOY_TOKEN }}
+      FLYCTL_ACCESS_TOKEN: ${{ secrets.FLY_DEPLOY_TOKEN }}
       INTERVALS_ICU_ATHLETE_ID: ${{ secrets.INTERVALS_ICU_ATHLETE_ID }}
       INTERVALS_ICU_BASIC_AUTH: ${{ secrets.INTERVALS_ICU_BASIC_AUTH }}
       N8N_BASIC_AUTH_USER: ${{ secrets.N8N_BASIC_AUTH_USER }}
@@ -29,18 +29,15 @@ jobs:
       - name: Install n8n CLI
         run: npm install -g n8n
 
-      - name: Deploy to Fly
-        env:
-          FLY_DEPLOY_TOKEN: ${{ secrets.FLY_DEPLOY_TOKEN }}
+      - name: Install Fly CLI
         run: |
-          # Install Fly CLI
           curl -L https://fly.io/install.sh | sh
           export FLYCTL_INSTALL="$HOME/.fly"
           export PATH="$FLYCTL_INSTALL/bin:$PATH"
 
-          # Authenticate and deploy
-          flyctl auth login --access-token "$FLY_DEPLOY_TOKEN"
-          flyctl deploy --config fly.toml
+      - name: Deploy to Fly
+        # Fly CLI automatically uses FLYCTL_ACCESS_TOKEN for auth
+        run: flyctl deploy --config fly.toml
 
       - name: Install jq
         run: |
