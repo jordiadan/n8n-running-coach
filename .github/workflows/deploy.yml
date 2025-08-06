@@ -29,17 +29,18 @@ jobs:
       - name: Install n8n CLI
         run: npm install -g n8n
 
-      - name: Install Fly CLI
+      - name: Deploy to Fly
+        env:
+          FLY_DEPLOY_TOKEN: ${{ secrets.FLY_DEPLOY_TOKEN }}
         run: |
+          # Install Fly CLI
           curl -L https://fly.io/install.sh | sh
           export FLYCTL_INSTALL="$HOME/.fly"
           export PATH="$FLYCTL_INSTALL/bin:$PATH"
 
-      - name: Authenticate Fly
-        run: flyctl auth login --access-token ${{ secrets.FLY_DEPLOY_TOKEN }}
-
-      - name: Deploy to Fly
-        run: flyctl deploy --config fly.toml
+          # Authenticate and deploy
+          flyctl auth login --access-token "$FLY_DEPLOY_TOKEN"
+          flyctl deploy --config fly.toml
 
       - name: Install jq
         run: |
