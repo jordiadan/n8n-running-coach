@@ -36,6 +36,7 @@ jobs:
       - name: Fly Deploy
         uses: superfly/flyctl-actions@v1
         with:
+          accessToken: ${{ secrets.FLY_API_TOKEN }}
           args: deploy --config fly.toml
 
       - name: Import n8n workflows
