@@ -13,7 +13,7 @@ jobs:
       DB_TYPE: "postgres"
       FLY_DEPLOY_TOKEN: ${{ secrets.FLY_DEPLOY_TOKEN }}
       INTERVALS_ICU_ATHLETE_ID: ${{ secrets.INTERVALS_ICU_ATHLETE_ID }}
-      INTERVALS_ICU_BASIC_AUTH: ${{ secrets.INTERVALS_ICU_BASIC_AUTH }}: ${{ secrets.INTERVALS_ICU_BASIC_AUTH }}
+      INTERVALS_ICU_BASIC_AUTH: ${{ secrets.INTERVALS_ICU_BASIC_AUTH }}
       N8N_BASIC_AUTH_USER: ${{ secrets.N8N_BASIC_AUTH_USER }}
       N8N_BASIC_AUTH_PASSWORD: ${{ secrets.N8N_BASIC_AUTH_PASSWORD }}
       N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
@@ -26,13 +26,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          
-      - run: npm install -g n8n
-
-      - name: Install jq
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq
+      - name: Install n8n CLI
+        run: npm install -g n8n
 
       - name: Install Fly CLI
         run: |
@@ -41,16 +36,18 @@ jobs:
           export PATH="$FLYCTL_INSTALL/bin:$PATH"
 
       - name: Authenticate Fly
-        run: |
-          flyctl auth login --access-token ${{ secrets.FLY_DEPLOY_TOKEN }}
+        run: flyctl auth login --access-token ${{ secrets.FLY_DEPLOY_TOKEN }}
 
       - name: Deploy to Fly
+        run: flyctl deploy --config fly.toml
+
+      - name: Install jq
         run: |
-          flyctl deploy --config fly.toml
+          sudo apt-get update && sudo apt-get install -y jq
 
       - name: Import n8n workflows
         env:
-          N8N_PROTOCOL: https
+          N8N_PROTOCOL: "https"
         run: |
           HOST=$(flyctl info --json | jq -r '.Hostname')
           n8n import:workflow --input=workflows/*.json --url "https://$HOST"
