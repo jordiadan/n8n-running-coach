@@ -32,7 +32,9 @@ jobs:
         uses: superfly/flyctl-actions@v1
 
       - name: Deploy to Fly
-        run: flyctl deploy --config fly.toml
+        run: |
+          # Omit --remote-only: unsupported flag
+          flyctl deploy --config fly.toml
 
       - name: Install jq
         run: |
@@ -40,8 +42,6 @@ jobs:
           sudo apt-get install -y jq
 
       - name: Import n8n workflows
-        env:
-          N8N_PROTOCOL: "https"
         run: |
           HOST=$(flyctl info --json | jq -r '.Hostname')
           n8n import:workflow --input=workflows/*.json --url "https://$HOST"
