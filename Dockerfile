@@ -1,4 +1,4 @@
-FROM n8nio/n8n:1.94.0
+FROM n8nio/n8n:1.106.3
 WORKDIR /home/node/.n8n
 ENV DB_TYPE=postgres
 ENV GENERIC_TIMEZONE=Europe/Madrid
