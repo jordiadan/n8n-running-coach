@@ -2,13 +2,10 @@ name: Deploy running-coach (staging -> prod)
 
 on:
   push:
-    branches:
-      - main            # cada commit a main -> STAGING
-    tags:
-      - 'v*.*.*'        # (opcional) si haces push del tag, también dispararía
+    branches: [ main ]           # cada commit a main -> STAGING
   release:
-    types: [ published ] # al publicar una release -> PROD
-  workflow_dispatch: {}   # ejecución manual desde la UI
+    types: [ published ]         # publicar release -> PROD
+  workflow_dispatch: {}          # ejecución manual opcional
 
 jobs:
   deploy-staging:
@@ -20,14 +17,9 @@ jobs:
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       FLY_APP: running-coach-n8n-staging
+      STAGING_N8N_ENCRYPTION_KEY: ${{ secrets.STAGING_N8N_ENCRYPTION_KEY }} # opcional
 
     steps:
-      - name: Debug event
-        run: |
-          echo "event: ${{ github.event_name }}"
-          echo "ref:    ${{ github.ref }}"
-          echo "sha:    $GITHUB_SHA"
-
       - uses: actions/checkout@v4
 
       - name: Setup Fly CLI
@@ -49,9 +41,7 @@ jobs:
           fi
 
       - name: Ensure N8N_ENCRYPTION_KEY (STAGING)
-        if: secrets.STAGING_N8N_ENCRYPTION_KEY != ''
-        env:
-          STAGING_N8N_ENCRYPTION_KEY: ${{ secrets.STAGING_N8N_ENCRYPTION_KEY }}
+        if: ${{ env.STAGING_N8N_ENCRYPTION_KEY != '' }}
         run: |
           if ! flyctl secrets list -a "$FLY_APP" | grep -q '^N8N_ENCRYPTION_KEY\b'; then
             flyctl secrets set N8N_ENCRYPTION_KEY="$STAGING_N8N_ENCRYPTION_KEY" -a "$FLY_APP"
@@ -66,10 +56,11 @@ jobs:
         run: |
           for i in {1..36}; do
             NOT_OK=$(flyctl checks list -a "$FLY_APP" | awk 'NR>1 {print $3}' | grep -v passing || true)
-            if [ -z "$NOT_OK" ]; then echo "✅ STAGING healthy"; break; fi
+            if [ -z "$NOT_OK" ]; then echo "✅ STAGING healthy"; exit 0; fi
             echo "⏳ Waiting STAGING health checks..."
             sleep 5
           done
+          echo "⚠️ STAGING checks not fully passing (continuing)"
 
       - name: Detect changed workflows
         id: changes
@@ -102,9 +93,14 @@ jobs:
           n8n import:workflow --input="workflows/*.json" --url "https://$HOST" $AUTH
           echo "✅ Imported to STAGING"
 
+      # (Opcional) activar autostop para staging barato:
+      # - name: Enable autostop (STAGING)
+      #   run: |
+      #     flyctl machines list -a "$FLY_APP" -q \
+      #     | xargs -I{} flyctl machines update {} -a "$FLY_APP" --autostop stop --autostart
+
   deploy-prod:
     needs: [deploy-staging]
-    # Release published -> PROD
     if: github.event_name == 'release' && github.event.action == 'published'
     runs-on: ubuntu-latest
     concurrency:
@@ -117,12 +113,6 @@ jobs:
       FLY_APP: running-coach-n8n
 
     steps:
-      - name: Debug event
-        run: |
-          echo "event: ${{ github.event_name }}"
-          echo "ref:    ${{ github.ref }}"
-          echo "sha:    $GITHUB_SHA"
-
       - uses: actions/checkout@v4
 
       - name: Setup Fly CLI
@@ -135,10 +125,11 @@ jobs:
         run: |
           for i in {1..36}; do
             NOT_OK=$(flyctl checks list -a "$FLY_APP" | awk 'NR>1 {print $3}' | grep -v passing || true)
-            if [ -z "$NOT_OK" ]; then echo "✅ PROD healthy"; break; fi
+            if [ -z "$NOT_OK" ]; then echo "✅ PROD healthy"; exit 0; fi
             echo "⏳ Waiting PROD health checks..."
             sleep 5
           done
+          echo "⚠️ PROD checks not fully passing (continuing)"
 
       - name: Detect changed workflows
         id: changes
