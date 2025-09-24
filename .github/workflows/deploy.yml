@@ -2,11 +2,11 @@ name: Deploy running-coach (staging -> prod)
 
 on:
   push:
-    branches: [ main ]           # cada commit a main -> STAGING
-  create:                        # si creas un tag vX.Y.Z -> también PROD
+    branches: [ main ]
+  create:
     tags:
       - 'v*.*.*'
-  workflow_dispatch: {}          # permitir ejecución manual
+  workflow_dispatch: {}
 
 jobs:
   deploy-staging:
@@ -18,11 +18,38 @@ jobs:
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       FLY_APP: running-coach-n8n-staging
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Fly CLI
         uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Bootstrap STAGING (app/volume if missing)
+        run: |
+          set -e
+          # crea app si no existe
+          if ! flyctl apps list --json | jq -r '.[].Name' | grep -qx "$FLY_APP"; then
+            flyctl apps create "$FLY_APP"
+          fi
+          # crea volumen "n8n_data" si no existe
+          if ! flyctl volumes list -a "$FLY_APP" | grep -q '^'n8n_data'\b'; then
+            flyctl volumes create n8n_data --region fra --size 1 -a "$FLY_APP" --yes
+          fi
+
+      - name: Ensure N8N_ENCRYPTION_KEY (STAGING)
+        if: secrets.STAGING_N8N_ENCRYPTION_KEY != ''
+        env:
+          STAGING_N8N_ENCRYPTION_KEY: ${{ secrets.STAGING_N8N_ENCRYPTION_KEY }}
+        run: |
+          if ! flyctl secrets list -a "$FLY_APP" | grep -q '^N8N_ENCRYPTION_KEY\b'; then
+            flyctl secrets set N8N_ENCRYPTION_KEY="$STAGING_N8N_ENCRYPTION_KEY" -a "$FLY_APP"
+          else
+            echo "N8N_ENCRYPTION_KEY already set for $FLY_APP"
+          fi
 
       - name: Deploy to STAGING
         run: flyctl deploy -a "$FLY_APP" --config fly.toml
@@ -31,11 +58,10 @@ jobs:
         run: |
           for i in {1..36}; do
             NOT_OK=$(flyctl checks list -a "$FLY_APP" | awk 'NR>1 {print $3}' | grep -v passing || true)
-            [ -z "$NOT_OK" ] && echo "✅ STAGING healthy" && exit 0
+            if [ -z "$NOT_OK" ]; then echo "✅ STAGING healthy"; break; fi
             echo "⏳ Waiting STAGING health checks..."
             sleep 5
           done
-          echo "⚠️ STAGING checks not passing (continuing anyway)"
 
       - name: Detect changed workflows
         id: changes
@@ -45,13 +71,11 @@ jobs:
             wf:
               - 'workflows/**.json'
 
-      - name: Install jq & n8n CLI (if workflows changed)
+      - name: Install n8n CLI (only if workflows changed)
         if: steps.changes.outputs.wf == 'true'
-        run: |
-          sudo apt-get update && sudo apt-get install -y jq
-          npm i -g n8n
+        run: npm i -g n8n
 
-      - name: Import workflows to STAGING (if changed)
+      - name: Import workflows to STAGING (only if changed)
         if: steps.changes.outputs.wf == 'true'
         env:
           N8N_BASIC_AUTH_USER: ${{ secrets.N8N_BASIC_AUTH_USER }}
@@ -70,8 +94,13 @@ jobs:
           n8n import:workflow --input="workflows/*.json" --url "https://$HOST" $AUTH
           echo "✅ Imported to STAGING"
 
+      # (Opcional) Activa autostop para staging barato
+      # - name: Enable autostop (STAGING)
+      #   run: |
+      #     flyctl machines list -a "$FLY_APP" -q \
+      #     | xargs -I{} flyctl machines update {} -a "$FLY_APP" --autostop stop --autostart
+
   deploy-prod:
-    # Solo cuando se crea un tag v*.*.* (release), y después de staging
     needs: [deploy-staging]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
@@ -79,10 +108,11 @@ jobs:
       group: deploy-running-coach-n8n-prod
       cancel-in-progress: true
     environment:
-      name: production            # si configuras 'production' con approvals, se aplican aquí
+      name: production
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       FLY_APP: running-coach-n8n
+
     steps:
       - uses: actions/checkout@v4
 
@@ -96,13 +126,12 @@ jobs:
         run: |
           for i in {1..36}; do
             NOT_OK=$(flyctl checks list -a "$FLY_APP" | awk 'NR>1 {print $3}' | grep -v passing || true)
-            [ -z "$NOT_OK" ] && echo "✅ PROD healthy" && exit 0
+            if [ -z "$NOT_OK" ]; then echo "✅ PROD healthy"; break; fi
             echo "⏳ Waiting PROD health checks..."
             sleep 5
           done
-          echo "⚠️ PROD checks not passing (continuing anyway)"
 
-      - name: Detect changed workflows (again)
+      - name: Detect changed workflows
         id: changes
         uses: dorny/paths-filter@v3
         with:
@@ -110,13 +139,13 @@ jobs:
             wf:
               - 'workflows/**.json'
 
-      - name: Install jq & n8n CLI (if workflows changed)
+      - name: Install jq & n8n CLI (only if workflows changed)
         if: steps.changes.outputs.wf == 'true'
         run: |
           sudo apt-get update && sudo apt-get install -y jq
           npm i -g n8n
 
-      - name: Import workflows to PROD (if changed)
+      - name: Import workflows to PROD (only if changed)
         if: steps.changes.outputs.wf == 'true'
         env:
           N8N_BASIC_AUTH_USER: ${{ secrets.N8N_BASIC_AUTH_USER }}
