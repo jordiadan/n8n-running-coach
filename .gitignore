@@ -16,7 +16,6 @@ logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
@@ -30,53 +29,46 @@ lerna-debug.log*
 !.yarn/sdks
 !.yarn/versions
 
-# --- n8n (datos locales que NO deben versionarse) ---
+# --- n8n (datos locales) ---
 .n8n/
-# Si por algún motivo tienes subcarpetas sueltas:
 n8n.sqlite*
 .backups/
 .cert/
 .config/
 .local/
 
-# --- Dotenv / secretos ---
+# --- Entornos / secretos ---
 .env
 .env.*
 !.env.example
 *.env.local
 *.envrc
 
-# --- OS / IDE ---
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
-
-# JetBrains
+# --- IDE / OS ---
+# IntelliJ
 .idea/
 *.iml
 out/
-
-# VS Code
+# VS Code (opcional: versiona estos si quieres)
 .vscode/
 !.vscode/extensions.json
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
+# macOS
+.DS_Store
 
-# --- Docker / Fly.io artefactos locales ---
-# (el Dockerfile y fly.toml sí se versionan)
+# --- Docker / Fly.io ---
 .dockerignore
 **/.docker-cache/
 docker-data/
 fly-cache/
 flyctl*
 .fly/
-# Si montas volúmenes locales para dev:
 data/
 volumes/
 
-# --- Misc ---
+# --- Miscelánea ---
 *.swp
 *.swo
 *~

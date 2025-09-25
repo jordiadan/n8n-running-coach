@@ -1,0 +1,76 @@
+name: compat-check
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-n8n:
+    runs-on: ubuntu-24.04
+
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Opcional: detectar la imagen/tag del Dockerfile (n8nio/n8n:x.y.z)
+      - name: Read n8n image tag from Dockerfile
+        id: df
+        run: |
+          IMG=$(awk '/^FROM[[:space:]]+n8nio\/n8n:/ {print $2}' Dockerfile)
+          if [ -z "$IMG" ]; then echo "No FROM n8nio/n8n found" && exit 1; fi
+          echo "image=$IMG" >> "$GITHUB_OUTPUT"
+
+      - name: Run n8n (ephemeral)
+        env:
+          N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+
+          docker run -d --name n8n-ci \
+            -p 5678:5678 \
+            -e N8N_LISTEN_ADDRESS=0.0.0.0 \
+            -e N8N_PORT=5678 \
+            -e N8N_BASIC_AUTH_ACTIVE=false \
+            -e GENERIC_TIMEZONE=Europe/Madrid \
+            -e N8N_ENCRYPTION_KEY="$N8N_ENCRYPTION_KEY" \
+            "${{ steps.df.outputs.image }}"
+
+          # Espera a que arranque (algunos 404 al principio son normales)
+          for i in $(seq 1 120); do
+            if curl -fsS http://localhost:5678/ >/dev/null 2>&1; then
+              echo "n8n up"; break
+            fi
+            sleep 2
+          done
+
+          # Copia e importa workflows
+          docker exec n8n-ci sh -lc 'mkdir -p /home/node/import'
+          docker cp workflows/. n8n-ci:/home/node/import/ || true
+          docker exec n8n-ci sh -lc '
+            set -e
+            shopt() { :; } 2>/dev/null || true
+            FILES=$(ls /home/node/import/*.json 2>/dev/null || true)
+            if [ -z "$FILES" ]; then
+              echo "No hay workflows/*.json para probar"
+              exit 0
+            fi
+            n8n import:workflow --input "/home/node/import/*.json"
+          '
+
+          # Ejecuta cada workflow JSON (sin activarlo) para pillar nodos rotos
+          for f in $(ls workflows/*.json 2>/dev/null || true); do
+            echo ">> Test $f"
+            docker exec n8n-ci sh -lc "n8n execute --file /home/node/import/$(basename "$f")" >/tmp/run.log 2>&1 || {
+              echo "❌ Falla $f"
+              tail -n +1 /tmp/run.log || true
+              docker logs --tail 200 n8n-ci || true
+              exit 1
+            }
+          done
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker logs --tail 200 n8n-ci || true
+          docker rm -f n8n-ci || true
