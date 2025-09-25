@@ -1,43 +1,60 @@
-name: Deploy to Fly
+name: Deploy n8n to Fly.io
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main ]
+  workflow_dispatch:
 
-permissions:
-  contents: read
+env:
+  APP: running-coach-n8n           # <-- tu nombre de app en Fly
+  REGION: fra                      # <-- tu región de Fly (p.ej. fra, mad, cdg...)
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    env:
-      APP: running-coach-n8n
-      REGION: fra
-      # Mapeamos los secrets a variables de entorno del job
-      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-      N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Diagnóstico (puedes quitarlo cuando todo te funcione)
-      - name: Debug secrets (no imprime valores)
+      - name: Comprobar secrets requeridos
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
         run: |
-          echo "Has FLY_API_TOKEN? $([ -n "$FLY_API_TOKEN" ] && echo yes || echo no)"
-          echo "Len FLY_API_TOKEN: ${#FLY_API_TOKEN}"
-          echo "Has N8N_ENCRYPTION_KEY? $([ -n "$N8N_ENCRYPTION_KEY" ] && echo yes || echo no)"
-          echo "Len N8N_ENCRYPTION_KEY: ${#N8N_ENCRYPTION_KEY}"
-
-      - name: Comprobar vars requeridas
-        run: |
-          [ -z "$FLY_API_TOKEN" ] && { echo "❌ Falta FLY_API_TOKEN"; exit 1; }
-          [ -z "$N8N_ENCRYPTION_KEY" ] && { echo "❌ Falta N8N_ENCRYPTION_KEY"; exit 1; }
+          if [ -z "${FLY_API_TOKEN:-}" ]; then
+            echo "❌ Falta FLY_API_TOKEN"; exit 1
+          fi
+          if [ -z "${N8N_ENCRYPTION_KEY:-}" ]; then
+            echo "❌ Falta N8N_ENCRYPTION_KEY"; exit 1
+          fi
+          echo "✅ Secrets presentes"
 
       - name: Setup flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Setear secreto en Fly y desplegar
+      - name: Autenticación en Fly
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          flyctl secrets set N8N_ENCRYPTION_KEY="$N8N_ENCRYPTION_KEY" -a "$APP" -y
-          flyctl deploy -a "$APP" --config fly.toml --region "$REGION"
+          flyctl auth token "$FLY_API_TOKEN"
+          flyctl auth whoami
+
+      - name: Actualizar secret en Fly (idempotente)
+        env:
+          N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
+        run: |
+          # Esto actualiza/crea el secret si cambia. No “rompe” aunque ya exista.
+          flyctl secrets set N8N_ENCRYPTION_KEY="$N8N_ENCRYPTION_KEY" --app "$APP" --region "$REGION" --yes
+
+      - name: Deploy a Fly
+        run: |
+          # --remote-only delega el build al builder de Fly (más estable en CI)
+          flyctl deploy --app "$APP" --region "$REGION" --remote-only --yes
+
+      - name: Estado de la app
+        run: |
+          flyctl status --app "$APP"
+          flyctl releases --app "$APP" --limit 5
