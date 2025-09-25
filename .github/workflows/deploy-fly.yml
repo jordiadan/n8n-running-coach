@@ -6,10 +6,10 @@ on:
       app:
         description: "Nombre del app en Fly"
         required: true
-        default: "running-coach-n8n"   # cámbialo si tu app prod se llama distinto
+        default: "running-coach-n8n"     # <-- AJÚSTALO si tu app prod se llama distinto
       region:
-        description: "Región Fly (opcional)"
-        required: false
+        description: "Región Fly"
+        required: true
         default: "fra"
 
 jobs:
@@ -17,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
+      APP: ${{ github.event.inputs.app }}
+      REGION: ${{ github.event.inputs.region }}
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
 
@@ -27,7 +29,7 @@ jobs:
       - name: Setup flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Verifica secretos requeridos
+      - name: Verifica secretos
         run: |
           set -e
           [ -z "$FLY_API_TOKEN" ] && { echo "❌ Falta FLY_API_TOKEN en GitHub Secrets"; exit 1; }
@@ -36,10 +38,9 @@ jobs:
       - name: Crea volumen si no existe
         run: |
           set -e
-          # intenta crear un volumen n8n_data si no existe
-          if ! flyctl volumes list -a "${{ github.event.inputs.app }}" | grep -q 'n8n_data'; then
+          if ! flyctl volumes list -a "$APP" | grep -q 'n8n_data'; then
             echo "🧱 creando volumen n8n_data"
-            flyctl volumes create n8n_data -a "${{ github.event.inputs.app }}" --region "${{ github.event.inputs.region }}" --size 1
+            flyctl volumes create n8n_data -a "$APP" --region "$REGION" --size 1
           else
             echo "✅ volumen n8n_data ya existe"
           fi
@@ -47,15 +48,49 @@ jobs:
       - name: Asegura N8N_ENCRYPTION_KEY en Fly
         run: |
           set -e
-          if ! flyctl secrets list -a "${{ github.event.inputs.app }}" | grep -q '^N8N_ENCRYPTION_KEY\b'; then
-            echo "🔐 seteando N8N_ENCRYPTION_KEY en Fly app"
-            flyctl secrets set N8N_ENCRYPTION_KEY="${N8N_ENCRYPTION_KEY}" -a "${{ github.event.inputs.app }}"
+          if ! flyctl secrets list -a "$APP" | grep -q '^N8N_ENCRYPTION_KEY\b'; then
+            echo "🔐 seteando N8N_ENCRYPTION_KEY"
+            flyctl secrets set N8N_ENCRYPTION_KEY="$N8N_ENCRYPTION_KEY" -a "$APP"
           else
-            echo "✅ N8N_ENCRYPTION_KEY ya está configurado en Fly"
+            echo "✅ N8N_ENCRYPTION_KEY ya está en Fly"
           fi
 
-      - name: Deploy
+      - name: Deploy app (fly.toml)
         run: |
           set -e
-          # Si tu fly.toml está preparado para prod, basta con:
-          flyctl deploy -a "${{ github.event.inputs.app }}" --config fly.toml
+          flyctl deploy -a "$APP" --config fly.toml
+
+      - name: Espera a que arranque
+        run: |
+          set -e
+          # Esperamos a que conteste el health básico en el proxy
+          for i in {1..60}; do
+            if flyctl checks list -a "$APP" | awk 'NR>1 {print $3}' | grep -q '^passing$'; then
+              echo "✅ health passing"
+              break
+            fi
+            echo "⏳ esperando health... ($i)"
+            sleep 5
+          done
+
+      - name: Sube workflows del repo a la máquina (SFTP)
+        run: |
+          set -e
+          shopt -s nullglob
+          WF=(workflows/*.json)
+          if [ ${#WF[@]} -eq 0 ]; then
+            echo "ℹ️ No hay workflows/*.json que subir"
+            exit 0
+          fi
+          # Crea el dir destino y sube
+          flyctl ssh console -a "$APP" -C 'mkdir -p /home/node/import'
+          # Sube todos los JSON
+          for f in workflows/*.json; do
+            echo "⬆️ subiendo $f"
+            flyctl ssh sftp -a "$APP" -C "put $f /home/node/import/"
+          done
+
+      - name: Importa workflows en PRODUCCIÓN
+        run: |
+          set -e
+          flyctl ssh console -a "$APP" -C 'n8n import:workflow --input "/home/node/import/*.json" && n8n list:workflow'

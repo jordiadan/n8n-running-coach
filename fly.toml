@@ -9,10 +9,12 @@ GENERIC_TIMEZONE = "Europe/Madrid"
 N8N_HOST = "0.0.0.0"
 N8N_PORT = "5678"
 N8N_LISTEN_ADDRESS = "0.0.0.0"
-NODEJS_PREFER_IPV4 = "true"
+GENERIC_TIMEZONE = "Europe/Madrid"
+N8N_BASIC_AUTH_ACTIVE = "true"
+# N8N_BASIC_AUTH_USER = "admin"
+# N8N_BASIC_AUTH_PASSWORD = "pon-una-contraseña-segura"
 N8N_RUNNERS_ENABLED = "true"
 N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS = "true"
-N8N_BASIC_AUTH_ACTIVE = "true"
 
 [[mounts]]
 source = "n8n_data"
@@ -21,14 +23,16 @@ destination = "/home/node/.n8n"
 [[services]]
 internal_port = 5678
 protocol = "tcp"
-  [[services.ports]]
-  handlers = ["http"]
-  port = 80
-  [[services.ports]]
-  handlers = ["tls","http"]
-  port = 443
 
-  # Tamaño por defecto de la VM (evita resets a 256 MB)
-  [[vm]]
-  size = "shared-cpu-1x"
-  memory = "512mb"
+  [[services.ports]]
+  port = 80
+  handlers = ["http"]
+
+  [[services.ports]]
+  port = 443
+  handlers = ["tls", "http"]
+
+  [services.concurrency]
+  type = "connections"
+  hard_limit = 25
+  soft_limit = 20

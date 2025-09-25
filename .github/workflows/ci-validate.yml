@@ -20,15 +20,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Ensure N8N_ENCRYPTION_KEY is present
+      - name: Verifica secreto N8N_ENCRYPTION_KEY
         run: |
           set -e
           if [ -z "${{ secrets.N8N_ENCRYPTION_KEY }}" ]; then
-            echo "❌ Missing GitHub secret N8N_ENCRYPTION_KEY"
+            echo "❌ Falta GitHub Secret N8N_ENCRYPTION_KEY"
             exit 1
           fi
 
-      - name: Start n8n (ephemeral)
+      - name: Levanta n8n efímero
         run: |
           set -e
           docker run -d --name n8n-ci \
@@ -38,10 +38,9 @@ jobs:
             -e N8N_BASIC_AUTH_ACTIVE="false" \
             -e N8N_ENCRYPTION_KEY="${{ secrets.N8N_ENCRYPTION_KEY }}" \
             -e GENERIC_TIMEZONE="Europe/Madrid" \
-            -v "${GITHUB_WORKSPACE}/workflows:/data/repo/workflows" \
             $N8N_IMAGE
 
-          # espera a que responda el contenedor
+          # Espera
           for i in {1..150}; do
             if curl -fsS http://localhost:5678/ >/dev/null; then
               echo "✅ n8n up"
@@ -54,11 +53,13 @@ jobs:
             sleep 2
           done
 
-      - name: Importa workflows dentro del contenedor
+      - name: Importa workflows (desde el repo)
         run: |
           set -e
-          # Usa el CLI de n8n DENTRO del contenedor (misma DB), así no necesitamos --url
-          docker exec n8n-ci bash -lc 'n8n import:workflow --input "/data/repo/workflows/*.json"'
+          # Copiamos los JSON al contenedor y ejecutamos el CLI dentro
+          docker exec n8n-ci bash -lc 'mkdir -p /home/node/import'
+          docker cp ./workflows/. n8n-ci:/home/node/import/
+          docker exec n8n-ci bash -lc 'n8n import:workflow --input "/home/node/import/*.json"'
 
       - name: Lista workflows importados
         run: |
