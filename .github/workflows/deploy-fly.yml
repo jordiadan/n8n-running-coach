@@ -1,77 +1,57 @@
-name: Deploy n8n to Fly (production)
+name: Deploy n8n to Fly (image bump)
 
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - 'fly.toml'
   workflow_dispatch:
-
-concurrency:
-  group: deploy-fly
-  cancel-in-progress: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      APP: running-coach-n8n        # <- Ajusta al nombre real de tu app en Fly
-      REGION: fra
-      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-      N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
-
+      APP: running-coach-n8n
+      # Si algún día quieres usar otra región para el deploy, cámbialo en fly.toml,
+      # no hace falta poner REGION aquí.
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Setup flyctl
+      - name: Verificar secrets
+        shell: bash
+        run: |
+          [ -z "${{ secrets.FLY_API_TOKEN }}" ] && { echo "❌ Falta FLY_API_TOKEN"; exit 1; }
+          [ -z "${{ secrets.N8N_ENCRYPTION_KEY }}" ] && { echo "❌ Falta N8N_ENCRYPTION_KEY"; exit 1; }
+          echo "✅ Secrets OK"
+
+      - name: Instalar flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
+        with:
+          version: latest
 
-      - name: Verifica secretos
+      - name: Autenticarse en Fly
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          [ -z "$FLY_API_TOKEN" ] && { echo "❌ Falta FLY_API_TOKEN"; exit 1; }
-          [ -z "$N8N_ENCRYPTION_KEY" ] && { echo "❌ Falta N8N_ENCRYPTION_KEY"; exit 1; }
+          # Con solo exportar FLY_API_TOKEN ya vale, pero dejamos whoami para confirmar
+          flyctl auth whoami
 
-      - name: Asegura volumen y secreto en Fly
+      - name: Asegurar secret N8N_ENCRYPTION_KEY en la app (sin redeploy)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
         run: |
-          if ! flyctl volumes list -a "$APP" | grep -q 'n8n_data'; then
-            flyctl volumes create n8n_data -a "$APP" --region "$REGION" --size 1
-          fi
-          if ! flyctl secrets list -a "$APP" | grep -q '^N8N_ENCRYPTION_KEY\b'; then
-            flyctl secrets set N8N_ENCRYPTION_KEY="$N8N_ENCRYPTION_KEY" -a "$APP"
-          fi
+          # --stage escribe el secret pero NO despliega (evita un deploy “extra”
+          # antes del nuestro).
+          flyctl secrets set N8N_ENCRYPTION_KEY="$N8N_ENCRYPTION_KEY" -a "$APP" --stage
 
-      - name: Deploy
-        run: flyctl deploy -a "$APP" --config fly.toml
-
-      - name: Espera health
+      - name: Deploy a Fly
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          for i in $(seq 1 60); do
-            if flyctl checks list -a "$APP" | awk 'NR>1 {print $3}' | grep -q '^passing$'; then
-              echo "✅ health passing"; exit 0
-            fi
-            echo "⏳ esperando health... ($i)"; sleep 5
-          done
-          echo "⚠️ no pasó health aún"
-
-      - name: Sube workflows del repo (si hay)
-        run: |
-          if ls workflows/*.json >/dev/null 2>&1; then
-            flyctl ssh console -a "$APP" -C 'mkdir -p /home/node/import'
-            for f in workflows/*.json; do
-              echo "⬆️ $f"
-              flyctl ssh sftp -a "$APP" -C "put $f /home/node/import/"
-            done
-          else
-            echo "ℹ️ No hay workflows/*.json que subir"
-          fi
-
-      - name: Importa workflows en la instancia
-        run: |
-          # Todo via /bin/sh en remoto (sin bash ni shopt)
-          flyctl ssh console -a "$APP" -C '
-            set -- /home/node/import/*.json
-            if [ -e "$1" ]; then
-              echo "🛬 Importando en Fly..."
-              n8n import:workflow --input "/home/node/import/*.json" && n8n list:workflow
-            else
-              echo "ℹ️ No hay nada que importar"
-            fi
-          '
+          # Construye la imagen con tu Dockerfile (que Dependabot acaba de actualizar)
+          # y despliega la app leyendo tu fly.toml del repo.
+          # --remote-only usa el builder remoto de Fly (más estable en GH runners).
+          flyctl deploy -a "$APP" --remote-only

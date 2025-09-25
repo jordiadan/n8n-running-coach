@@ -2,37 +2,34 @@ app = "running-coach-n8n"
 primary_region = "fra"
 
 [build]
+# Si usas imagen oficial:
 image = "n8nio/n8n:1.78.1"
+# Si usas Dockerfile propio, elimina la línea de image y deja:
+# dockerfile = "Dockerfile"
 
 [env]
-GENERIC_TIMEZONE = "Europe/Madrid"
-N8N_HOST = "0.0.0.0"
 N8N_PORT = "5678"
 N8N_LISTEN_ADDRESS = "0.0.0.0"
 GENERIC_TIMEZONE = "Europe/Madrid"
-N8N_BASIC_AUTH_ACTIVE = "true"
-# N8N_BASIC_AUTH_USER = "admin"
-# N8N_BASIC_AUTH_PASSWORD = "pon-una-contraseña-segura"
-N8N_RUNNERS_ENABLED = "true"
-N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS = "true"
-
-[[mounts]]
-source = "n8n_data"
-destination = "/home/node/.n8n"
+# NUNCA pongas N8N_ENCRYPTION_KEY aquí: se inyecta como secret
 
 [[services]]
 internal_port = 5678
 protocol = "tcp"
+[[services.ports]]
+port = 80
+handlers = ["http"]
+[[services.ports]]
+port = 443
+handlers = ["tls", "http"]
 
-  [[services.ports]]
-  port = 80
-  handlers = ["http"]
+# Opcional pero recomendado: volumen persistente para /home/node/.n8n
+[[mounts]]
+source = "n8n_data"
+destination = "/home/node/.n8n"
 
-  [[services.ports]]
-  port = 443
-  handlers = ["tls", "http"]
-
-  [services.concurrency]
-  type = "connections"
-  hard_limit = 25
-  soft_limit = 20
+# Recursos opcionales
+[vm]
+memory = "512mb"
+cpu_kind = "shared"
+cpus = 1
