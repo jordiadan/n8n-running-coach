@@ -1,96 +1,72 @@
 name: Deploy n8n to Fly (production)
 
 on:
-  workflow_dispatch:
-    inputs:
-      app:
-        description: "Nombre del app en Fly"
-        required: true
-        default: "running-coach-n8n"     # <-- AJÚSTALO si tu app prod se llama distinto
-      region:
-        description: "Región Fly"
-        required: true
-        default: "fra"
+  push:
+    branches: [ main ]           # <- SE DISPARA EN MERGE A MAIN
+  workflow_dispatch:             # <- por si quieres dispararlo a mano
+
+concurrency:
+  group: deploy-fly
+  cancel-in-progress: true
 
 jobs:
   deploy:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-
     env:
-      APP: ${{ github.event.inputs.app }}
-      REGION: ${{ github.event.inputs.region }}
+      APP: running-coach-n8n         # <-- Ajusta al nombre real de tu app en Fly
+      REGION: fra
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Verifica secretos
         run: |
-          set -e
-          [ -z "$FLY_API_TOKEN" ] && { echo "❌ Falta FLY_API_TOKEN en GitHub Secrets"; exit 1; }
-          [ -z "$N8N_ENCRYPTION_KEY" ] && { echo "❌ Falta N8N_ENCRYPTION_KEY en GitHub Secrets"; exit 1; }
+          [ -z "$FLY_API_TOKEN" ] && { echo "❌ Falta FLY_API_TOKEN"; exit 1; }
+          [ -z "$N8N_ENCRYPTION_KEY" ] && { echo "❌ Falta N8N_ENCRYPTION_KEY"; exit 1; }
 
-      - name: Crea volumen si no existe
+      - name: Asegura volumen y secreto
         run: |
-          set -e
           if ! flyctl volumes list -a "$APP" | grep -q 'n8n_data'; then
-            echo "🧱 creando volumen n8n_data"
             flyctl volumes create n8n_data -a "$APP" --region "$REGION" --size 1
-          else
-            echo "✅ volumen n8n_data ya existe"
           fi
-
-      - name: Asegura N8N_ENCRYPTION_KEY en Fly
-        run: |
-          set -e
           if ! flyctl secrets list -a "$APP" | grep -q '^N8N_ENCRYPTION_KEY\b'; then
-            echo "🔐 seteando N8N_ENCRYPTION_KEY"
             flyctl secrets set N8N_ENCRYPTION_KEY="$N8N_ENCRYPTION_KEY" -a "$APP"
-          else
-            echo "✅ N8N_ENCRYPTION_KEY ya está en Fly"
           fi
 
-      - name: Deploy app (fly.toml)
-        run: |
-          set -e
-          flyctl deploy -a "$APP" --config fly.toml
+      - name: Deploy
+        run: flyctl deploy -a "$APP" --config fly.toml
 
-      - name: Espera a que arranque
+      - name: Espera health
         run: |
-          set -e
-          # Esperamos a que conteste el health básico en el proxy
           for i in {1..60}; do
             if flyctl checks list -a "$APP" | awk 'NR>1 {print $3}' | grep -q '^passing$'; then
-              echo "✅ health passing"
-              break
+              echo "✅ health passing"; exit 0
             fi
-            echo "⏳ esperando health... ($i)"
-            sleep 5
+            echo "⏳ esperando health... ($i)"; sleep 5
           done
+          echo "⚠️ no pasó health, continúo igual"
 
-      - name: Sube workflows del repo a la máquina (SFTP)
+      - name: Sube workflows del repo (si hay)
         run: |
-          set -e
           shopt -s nullglob
           WF=(workflows/*.json)
-          if [ ${#WF[@]} -eq 0 ]; then
+          if [ ${#WF[@]} -gt 0 ]; then
+            flyctl ssh console -a "$APP" -C 'mkdir -p /home/node/import'
+            for f in "${WF[@]}"; do
+              echo "⬆️ $f"
+              flyctl ssh sftp -a "$APP" -C "put $f /home/node/import/"
+            done
+          else
             echo "ℹ️ No hay workflows/*.json que subir"
-            exit 0
           fi
-          # Crea el dir destino y sube
-          flyctl ssh console -a "$APP" -C 'mkdir -p /home/node/import'
-          # Sube todos los JSON
-          for f in workflows/*.json; do
-            echo "⬆️ subiendo $f"
-            flyctl ssh sftp -a "$APP" -C "put $f /home/node/import/"
-          done
 
-      - name: Importa workflows en PRODUCCIÓN
+      - name: Importa workflows en Fly
         run: |
-          set -e
-          flyctl ssh console -a "$APP" -C 'n8n import:workflow --input "/home/node/import/*.json" && n8n list:workflow'
+          flyctl ssh console -a "$APP" -C 'shopt -s nullglob; FILES=(/home/node/import/*.json); \
+            [ ${#FILES[@]} -eq 0 ] && echo "No hay nada que importar" || (n8n import:workflow --input "/home/node/import/*.json" && n8n list:workflow)'
