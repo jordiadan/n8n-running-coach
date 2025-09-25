@@ -1,0 +1,43 @@
+name: Deploy to Fly
+
+on:
+  push:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      APP: running-coach-n8n
+      REGION: fra
+      # Mapeamos los secrets a variables de entorno del job
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Diagnóstico (puedes quitarlo cuando todo te funcione)
+      - name: Debug secrets (no imprime valores)
+        run: |
+          echo "Has FLY_API_TOKEN? $([ -n "$FLY_API_TOKEN" ] && echo yes || echo no)"
+          echo "Len FLY_API_TOKEN: ${#FLY_API_TOKEN}"
+          echo "Has N8N_ENCRYPTION_KEY? $([ -n "$N8N_ENCRYPTION_KEY" ] && echo yes || echo no)"
+          echo "Len N8N_ENCRYPTION_KEY: ${#N8N_ENCRYPTION_KEY}"
+
+      - name: Comprobar vars requeridas
+        run: |
+          [ -z "$FLY_API_TOKEN" ] && { echo "❌ Falta FLY_API_TOKEN"; exit 1; }
+          [ -z "$N8N_ENCRYPTION_KEY" ] && { echo "❌ Falta N8N_ENCRYPTION_KEY"; exit 1; }
+
+      - name: Setup flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Setear secreto en Fly y desplegar
+        run: |
+          flyctl secrets set N8N_ENCRYPTION_KEY="$N8N_ENCRYPTION_KEY" -a "$APP" -y
+          flyctl deploy -a "$APP" --config fly.toml --region "$REGION"
