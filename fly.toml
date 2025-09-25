@@ -3,7 +3,7 @@ primary_region = "fra"
 
 [build]
 # Si usas imagen oficial:
-image = "n8nio/n8n:1.78.1"
+image = "n8nio/n8n:1.94.0"
 # Si usas Dockerfile propio, elimina la línea de image y deja:
 # dockerfile = "Dockerfile"
 
