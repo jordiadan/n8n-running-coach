@@ -1,139 +1,102 @@
-name: Deploy running-coach (staging -> prod)
+name: CI (test n8n) + Deploy PROD
 
 on:
   push:
-    branches: [ main ]             # cada commit a main -> STAGING
-  release:
-    types: [ published ]           # publicar release -> PROD
-  workflow_dispatch: {}            # ejecución manual opcional
+    branches: [ main ]
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch: {}
 
 jobs:
-  deploy-staging:
-    if: github.event_name != 'pull_request'
+  test-ci:
+    name: Run n8n in CI and import workflows
     runs-on: ubuntu-latest
-    concurrency:
-      group: deploy-running-coach-n8n-staging
-      cancel-in-progress: true
-    env:
-      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_STAGING }}   # <- token de STAGING
-      FLY_APP: running-coach-n8n-staging
-      STAGING_N8N_ENCRYPTION_KEY: ${{ secrets.STAGING_N8N_ENCRYPTION_KEY }} # opcional
+
+    services:
+      n8n:
+        image: n8nio/n8n:1.78.1
+        ports:
+          - 5678:5678
+        env:
+          # n8n efímero en CI, sin auth para simplificar
+          N8N_HOST: "0.0.0.0"
+          N8N_PORT: "5678"
+          N8N_BASIC_AUTH_ACTIVE: "false"
+          N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
+          GENERIC_TIMEZONE: "Europe/Madrid"
+        options: >-
+          --health-cmd "curl -fsS http://localhost:5678/ || exit 1"
+          --health-interval 5s
+          --health-start-period 30s
+          --health-timeout 3s
+          --health-retries 20
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Fly CLI
-        uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Install n8n CLI
+        run: npm i -g n8n@1.78.1
 
-      # (Opcional) Solo si quieres que el pipeline garantice la key en staging
-      - name: Ensure N8N_ENCRYPTION_KEY (STAGING)
-        if: ${{ env.STAGING_N8N_ENCRYPTION_KEY != '' }}
+      - name: Wait for n8n
         run: |
-          if ! flyctl secrets list -a "$FLY_APP" | grep -q '^N8N_ENCRYPTION_KEY\b'; then
-            flyctl secrets set N8N_ENCRYPTION_KEY="$STAGING_N8N_ENCRYPTION_KEY" -a "$FLY_APP"
-          else
-            echo "N8N_ENCRYPTION_KEY already set for $FLY_APP"
-          fi
-
-      - name: Deploy to STAGING
-        run: flyctl deploy -a "$FLY_APP" --config fly.toml
-
-      - name: Wait health checks (STAGING)
-        run: |
-          for i in {1..36}; do
-            NOT_OK=$(flyctl checks list -a "$FLY_APP" | awk 'NR>1 {print $3}' | grep -v passing || true)
-            if [ -z "$NOT_OK" ]; then echo "✅ STAGING healthy"; exit 0; fi
-            echo "⏳ Waiting STAGING health checks..."
-            sleep 5
+          for i in {1..60}; do
+            if curl -fsS http://localhost:5678/ >/dev/null; then
+              echo "✅ n8n up"; exit 0
+            fi
+            sleep 2
           done
-          echo "⚠️ STAGING checks not fully passing (continuing)"
+          echo "❌ n8n didn't start"; docker ps -a; docker logs $(docker ps -q); exit 1
 
-      - name: Detect changed workflows
-        id: changes
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            wf:
-              - 'workflows/**.json'
-
-      - name: Install jq & n8n CLI (only if workflows changed)
-        if: steps.changes.outputs.wf == 'true'
+      - name: Import workflows into CI n8n
         run: |
-          sudo apt-get update && sudo apt-get install -y jq
-          npm i -g n8n
-
-      - name: Import workflows to STAGING (only if changed)
-        if: steps.changes.outputs.wf == 'true'
-        env:
-          N8N_BASIC_AUTH_USER: ${{ secrets.N8N_BASIC_AUTH_USER }}
-          N8N_BASIC_AUTH_PASSWORD: ${{ secrets.N8N_BASIC_AUTH_PASSWORD }}
-        run: |
-          set -e
-          HOST=$(flyctl status -a "$FLY_APP" --json | jq -r '.Hostname // .App.Hostname')
-          [ -n "$HOST" ] || { echo "❌ Could not resolve STAGING hostname"; exit 1; }
-          AUTH=""
-          if [ -n "$N8N_BASIC_AUTH_USER" ] && [ -n "$N8N_BASIC_AUTH_PASSWORD" ]; then
-            AUTH="--user $N8N_BASIC_AUTH_USER --password $N8N_BASIC_AUTH_PASSWORD"
-          fi
           shopt -s nullglob
           FILES=(workflows/*.json)
           [ ${#FILES[@]} -eq 0 ] && echo "No workflows to import" && exit 0
-          n8n import:workflow --input="workflows/*.json" --url "https://$HOST" $AUTH
-          echo "✅ Imported to STAGING"
+          n8n import:workflow --input="workflows/*.json" --url "http://localhost:5678"
+          # Smoke simple: listar
+          n8n list:workflow --url "http://localhost:5678"
 
   deploy-prod:
-    needs: [deploy-staging]
-    if: github.event_name == 'release' && github.event.action == 'published'
+    name: Deploy to Fly (PROD)
+    needs: [test-ci]
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-running-coach-n8n-prod
       cancel-in-progress: true
-    environment:
-      name: production
     env:
-      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_PROD }}      # <- token de PROD
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       FLY_APP: running-coach-n8n
 
     steps:
       - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Setup Fly CLI
-        uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Ensure required secrets on Fly
+        run: |
+          set -e
+          # Clave de cifrado (imprescindible que coincida para leer credenciales)
+          if ! flyctl secrets list -a "$FLY_APP" | grep -q '^N8N_ENCRYPTION_KEY\b'; then
+            flyctl secrets set N8N_ENCRYPTION_KEY='${{ secrets.N8N_ENCRYPTION_KEY }}' -a "$FLY_APP"
+          fi
+          # Basic auth opcional
+          if [ -n "${{ secrets.N8N_BASIC_AUTH_USER }}" ] && [ -n "${{ secrets.N8N_BASIC_AUTH_PASSWORD }}" ]; then
+            flyctl secrets set \
+              N8N_BASIC_AUTH_USER='${{ secrets.N8N_BASIC_AUTH_USER }}' \
+              N8N_BASIC_AUTH_PASSWORD='${{ secrets.N8N_BASIC_AUTH_PASSWORD }}' \
+              -a "$FLY_APP"
+          fi
 
-      - name: Deploy to PROD (release)
+      - name: Deploy to Fly
         run: flyctl deploy -a "$FLY_APP" --config fly.toml
 
-      - name: Wait health checks (PROD)
-        run: |
-          for i in {1..36}; do
-            NOT_OK=$(flyctl checks list -a "$FLY_APP" | awk 'NR>1 {print $3}' | grep -v passing || true)
-            if [ -z "$NOT_OK" ]; then echo "✅ PROD healthy"; exit 0; fi
-            echo "⏳ Waiting PROD health checks..."
-            sleep 5
-          done
-          echo "⚠️ PROD checks not fully passing (continuing)"
-
-      - name: Detect changed workflows
-        id: changes
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            wf:
-              - 'workflows/**.json'
-
-      - name: Install jq & n8n CLI (only if workflows changed)
-        if: steps.changes.outputs.wf == 'true'
-        run: |
-          sudo apt-get update && sudo apt-get install -y jq
-          npm i -g n8n
-
-      - name: Import workflows to PROD (only if changed)
-        if: steps.changes.outputs.wf == 'true'
+      - name: Import workflows to PROD
         env:
           N8N_BASIC_AUTH_USER: ${{ secrets.N8N_BASIC_AUTH_USER }}
           N8N_BASIC_AUTH_PASSWORD: ${{ secrets.N8N_BASIC_AUTH_PASSWORD }}
         run: |
-          set -e
+          npm i -g n8n@1.78.1
+          # Host público de la app
           HOST=$(flyctl status -a "$FLY_APP" --json | jq -r '.Hostname // .App.Hostname')
           [ -n "$HOST" ] || { echo "❌ Could not resolve PROD hostname"; exit 1; }
           AUTH=""
