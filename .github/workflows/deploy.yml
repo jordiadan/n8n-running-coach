@@ -23,18 +23,13 @@ jobs:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
         run: |
-          if [ -z "${FLY_API_TOKEN:-}" ]; then
-            echo "❌ Falta FLY_API_TOKEN"; exit 1
-          fi
-          if [ -z "${N8N_ENCRYPTION_KEY:-}" ]; then
-            echo "❌ Falta N8N_ENCRYPTION_KEY"; exit 1
-          fi
+          [ -z "${FLY_API_TOKEN:-}" ] && { echo "❌ Falta FLY_API_TOKEN"; exit 1; }
+          [ -z "${N8N_ENCRYPTION_KEY:-}" ] && { echo "❌ Falta N8N_ENCRYPTION_KEY"; exit 1; }
           echo "✅ Secrets presentes"
 
       - name: Setup flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
-      # flyctl usa FLY_API_TOKEN del entorno automáticamente.
       - name: Verificar autenticación
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
@@ -45,13 +40,12 @@ jobs:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
         run: |
-          flyctl secrets set N8N_ENCRYPTION_KEY="$N8N_ENCRYPTION_KEY" --app "$APP" --yes
+          flyctl secrets set N8N_ENCRYPTION_KEY="$N8N_ENCRYPTION_KEY" --app "$APP" --stage
 
       - name: Deploy a Fly
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          # Usa el fly.toml del repo. --remote-only construye en los builders de Fly.
           flyctl deploy --app "$APP" --remote-only --yes
 
       - name: Estado y últimas releases
