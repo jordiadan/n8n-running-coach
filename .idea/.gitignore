@@ -1,0 +1,84 @@
+# --- Node / TypeScript ---
+node_modules/
+dist/
+build/
+tmp/
+temp/
+*.tsbuildinfo
+
+# Coverage / reports
+coverage/
+.nyc_output/
+reports/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Package managers / caches
+.pnpm-store/
+.npm/
+.yarn/*
+!.yarn/patches
+!.yarn/releases
+!.yarn/plugins
+!.yarn/sdks
+!.yarn/versions
+
+# --- n8n (datos locales que NO deben versionarse) ---
+.n8n/
+# Si por algún motivo tienes subcarpetas sueltas:
+n8n.sqlite*
+.backups/
+.cert/
+.config/
+.local/
+
+# --- Dotenv / secretos ---
+.env
+.env.*
+!.env.example
+*.env.local
+*.envrc
+
+# --- OS / IDE ---
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# JetBrains
+.idea/
+*.iml
+out/
+
+# VS Code
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# --- Docker / Fly.io artefactos locales ---
+# (el Dockerfile y fly.toml sí se versionan)
+.dockerignore
+**/.docker-cache/
+docker-data/
+fly-cache/
+flyctl*
+.fly/
+# Si montas volúmenes locales para dev:
+data/
+volumes/
+
+# --- Misc ---
+*.swp
+*.swo
+*~
+*.orig
+*.bak
