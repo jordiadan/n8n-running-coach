@@ -1,57 +1,48 @@
-name: Deploy n8n to Fly (image bump)
+# .github/workflows/deploy.yml
+name: Deploy to Fly
 
 on:
   push:
     branches: [ main ]
     paths:
+      - 'workflows/**'
       - 'Dockerfile'
       - 'fly.toml'
-  workflow_dispatch:
+      - '.github/workflows/deploy.yml'
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
       APP: running-coach-n8n
-      # Si algún día quieres usar otra región para el deploy, cámbialo en fly.toml,
-      # no hace falta poner REGION aquí.
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Verificar secrets
-        shell: bash
+      # Comprobación de secretos (solo para deploy)
+      - name: Check secrets
         run: |
-          [ -z "${{ secrets.FLY_API_TOKEN }}" ] && { echo "❌ Falta FLY_API_TOKEN"; exit 1; }
-          [ -z "${{ secrets.N8N_ENCRYPTION_KEY }}" ] && { echo "❌ Falta N8N_ENCRYPTION_KEY"; exit 1; }
-          echo "✅ Secrets OK"
-
-      - name: Instalar flyctl
-        uses: superfly/flyctl-actions/setup-flyctl@master
-        with:
-          version: latest
-
-      - name: Autenticarse en Fly
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: |
-          # Con solo exportar FLY_API_TOKEN ya vale, pero dejamos whoami para confirmar
-          flyctl auth whoami
-
-      - name: Asegurar secret N8N_ENCRYPTION_KEY en la app (sin redeploy)
+          [ -z "${FLY_API_TOKEN:-}" ] && { echo "❌ Falta FLY_API_TOKEN"; exit 1; }
+          [ -z "${N8N_ENCRYPTION_KEY:-}" ] && { echo "❌ Falta N8N_ENCRYPTION_KEY"; exit 1; }
+          echo "✅ Secrets presentes"
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
-        run: |
-          # --stage escribe el secret pero NO despliega (evita un deploy “extra”
-          # antes del nuestro).
-          flyctl secrets set N8N_ENCRYPTION_KEY="$N8N_ENCRYPTION_KEY" -a "$APP" --stage
 
-      - name: Deploy a Fly
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+        with: { version: latest }
+
+      - name: Whoami
+        env: { FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }} }
+        run: flyctl auth whoami
+
+      # No uses --region en secrets y evita --yes (no existe). Usa --stage para no redeploy inmediato si quieres.
+      - name: Set app secret (idempotente)
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: |
-          # Construye la imagen con tu Dockerfile (que Dependabot acaba de actualizar)
-          # y despliega la app leyendo tu fly.toml del repo.
-          # --remote-only usa el builder remoto de Fly (más estable en GH runners).
-          flyctl deploy -a "$APP" --remote-only
+          N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
+        run: flyctl secrets set N8N_ENCRYPTION_KEY="$N8N_ENCRYPTION_KEY" --app "$APP" --stage
+
+      - name: Deploy
+        env: { FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }} }
+        run: flyctl deploy --app "$APP" --remote-only
