@@ -1,48 +1,65 @@
-# .github/workflows/deploy.yml
-name: Deploy to Fly
+name: Deploy to Fly.io
 
 on:
   push:
-    branches: [ main ]
+    branches: ["main"]
     paths:
-      - 'workflows/**'
-      - 'Dockerfile'
-      - 'fly.toml'
-      - '.github/workflows/deploy.yml'
+      - "Dockerfile"
+      - "fly.toml"
+      - ".github/workflows/deploy-fly.yml"
+      - "workflows/**"
+  workflow_dispatch:
+
+env:
+  APP: running-coach-n8n
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    env:
-      APP: running-coach-n8n
+    permissions:
+      contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      # Comprobación de secretos (solo para deploy)
-      - name: Check secrets
+      - name: Check required secrets
+        shell: bash
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
         run: |
-          [ -z "${FLY_API_TOKEN:-}" ] && { echo "❌ Falta FLY_API_TOKEN"; exit 1; }
-          [ -z "${N8N_ENCRYPTION_KEY:-}" ] && { echo "❌ Falta N8N_ENCRYPTION_KEY"; exit 1; }
+          set -euo pipefail
+          if [ -z "${FLY_API_TOKEN:-}" ]; then
+            echo "❌ Falta FLY_API_TOKEN"; exit 1
+          fi
+          if [ -z "${N8N_ENCRYPTION_KEY:-}" ]; then
+            echo "❌ Falta N8N_ENCRYPTION_KEY"; exit 1
+          fi
           echo "✅ Secrets presentes"
+
+      - name: Setup flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+        with:
+          version: latest
+
+      - name: Auth check
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl auth whoami
+
+      # Guarda/actualiza el secret en Fly sin desplegar aún (para apps de Machines usa --stage)
+      - name: Stage N8N_ENCRYPTION_KEY on Fly
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
+        run: |
+          flyctl secrets set N8N_ENCRYPTION_KEY="$N8N_ENCRYPTION_KEY" --app "$APP" --stage
 
-      - uses: superfly/flyctl-actions/setup-flyctl@master
-        with: { version: latest }
-
-      - name: Whoami
-        env: { FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }} }
-        run: flyctl auth whoami
-
-      # No uses --region en secrets y evita --yes (no existe). Usa --stage para no redeploy inmediato si quieres.
-      - name: Set app secret (idempotente)
+      - name: Deploy to Fly
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-          N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
-        run: flyctl secrets set N8N_ENCRYPTION_KEY="$N8N_ENCRYPTION_KEY" --app "$APP" --stage
-
-      - name: Deploy
-        env: { FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }} }
-        run: flyctl deploy --app "$APP" --remote-only
+        run: |
+          # Asegúrate de que en fly.toml no hay claves duplicadas (p. ej., GENERIC_TIMEZONE repetida)
+          flyctl deploy --app "$APP" --config "fly.toml" --remote-only
