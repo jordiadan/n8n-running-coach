@@ -1,70 +1,71 @@
-# .github/workflows/compat.yml
-name: Compat Check
+name: Validate n8n workflows
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: ["main"]
     paths:
-      - 'workflows/**'
-      - 'Dockerfile'
-      - 'package-lock.json'
-      - '.github/workflows/compat.yml'
-  push:
-    branches: [ main ]
-    paths:
-      - 'workflows/**'
-      - 'Dockerfile'
-      - '.github/workflows/compat.yml'
-
-concurrency:
-  group: compat-${{ github.ref }}
-  cancel-in-progress: true
+      - "Dockerfile"
+      - "workflows/**"
+      - ".github/workflows/**"
 
 jobs:
   validate:
-    name: Validate n8n workflows
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: n8nio/n8n:1.94.0
+      CONTAINER: n8n-ci
 
     steps:
       - uses: actions/checkout@v4
 
-      # En PR generamos N8N_ENCRYPTION_KEY temporal (no filtra secretos)
-      - name: Make temp N8N_ENCRYPTION_KEY for PRs
-        if: github.event_name == 'pull_request'
+      - name: Generar ENCRYPTION KEY efímera
         run: echo "N8N_ENCRYPTION_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
 
-      # En push a main puedes reutilizar tu secret real si quieres (opcional)
-      - name: Use repo secret key on push
-        if: github.event_name == 'push'
-        run: echo "N8N_ENCRYPTION_KEY=${{ secrets.N8N_ENCRYPTION_KEY }}" >> "$GITHUB_ENV"
-
-      - name: Boot n8n (Docker)
+      - name: Levantar n8n
         env:
           N8N_ENCRYPTION_KEY: ${{ env.N8N_ENCRYPTION_KEY }}
         run: |
-          docker run -d --name n8n-ci \
+          docker run -d --name $CONTAINER \
             -p 5678:5678 \
             -e N8N_LISTEN_ADDRESS=0.0.0.0 \
             -e N8N_PORT=5678 \
             -e N8N_BASIC_AUTH_ACTIVE=false \
             -e GENERIC_TIMEZONE=Europe/Madrid \
             -e N8N_ENCRYPTION_KEY="$N8N_ENCRYPTION_KEY" \
-            n8nio/n8n:1.94.0
+            -e N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true \
+            $IMAGE
 
-          for i in {1..150}; do
-            curl -fsS http://localhost:5678/ >/dev/null && { echo "✅ n8n up"; break; }
+          # Espera activa a healthz
+          for i in $(seq 1 150); do
+            if curl -fsS http://localhost:5678/healthz >/dev/null; then
+              echo "✅ n8n up"
+              break
+            fi
             sleep 2
           done
+          curl -fsS http://localhost:5678/healthz >/dev/null || (echo "❌ n8n no levantó a tiempo" && exit 1)
 
-      - name: Import workflows from repo
+      - name: Importar workflows (POSIX sh)
         run: |
-          docker exec n8n-ci sh -lc 'mkdir -p /home/node/import'
-          docker cp workflows/. n8n-ci:/home/node/import/ || true
-          docker exec n8n-ci sh -lc 'shopt -s nullglob; FILES=(/home/node/import/*.json); \
-            [ ${#FILES[@]} -eq 0 ] && echo "No hay workflows/*.json" || n8n import:workflow --input "/home/node/import/*.json"'
+          docker exec $CONTAINER sh -lc 'mkdir -p /home/node/import'
+          if ls workflows/*.json >/dev/null 2>&1; then
+            docker cp workflows/. $CONTAINER:/home/node/import/
+            docker exec $CONTAINER sh -lc '
+              count=$(ls -1 /home/node/import/*.json 2>/dev/null | wc -l)
+              if [ "$count" -eq 0 ]; then
+                echo "No hay workflows/*.json"
+              else
+                n8n import:workflow --input "/home/node/import/*.json"
+              fi
+            '
+          else
+            echo "ℹ️ No hay workflows/*.json en el repo; nada que importar"
+          fi
 
-      - name: Cleanup
+      - name: Logs al fallar
+        if: failure()
+        run: docker logs --tail 500 $CONTAINER || true
+
+      - name: Parar y limpiar
         if: always()
-        run: |
-          docker logs --tail 200 n8n-ci || true
-          docker rm -f n8n-ci || true
+        run: docker rm -f $CONTAINER || true
