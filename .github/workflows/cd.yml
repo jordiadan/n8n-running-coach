@@ -6,7 +6,7 @@ on:
     paths:
       - "Dockerfile"
       - "fly.toml"
-      - ".github/workflows/deploy-fly.yml"
+      - "cd.yml"
       - "workflows/**"
   workflow_dispatch:
 
