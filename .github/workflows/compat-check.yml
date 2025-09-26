@@ -45,21 +45,25 @@ jobs:
           done
           curl -fsS http://localhost:5678/healthz >/dev/null || (echo "❌ n8n no levantó a tiempo" && exit 1)
 
-      - name: Importar workflows (POSIX sh)
+      - name: Importar workflows (POSIX sh, con glob correcto)
         run: |
           docker exec $CONTAINER sh -lc 'mkdir -p /home/node/import'
+          
           if ls workflows/*.json >/dev/null 2>&1; then
-            docker cp workflows/. $CONTAINER:/home/node/import/
-            docker exec $CONTAINER sh -lc '
-              count=$(ls -1 /home/node/import/*.json 2>/dev/null | wc -l)
-              if [ "$count" -eq 0 ]; then
-                echo "No hay workflows/*.json"
-              else
-                n8n import:workflow --input "/home/node/import/*.json"
-              fi
-            '
+          docker cp workflows/. $CONTAINER:/home/node/import/
+          
+          # Dentro del contenedor: forma robusta de comprobar expansión del glob
+          docker exec $CONTAINER sh -lc '
+           set -- /home/node/import/*.json
+           if [ "$1" = "/home/node/import/*.json" ]; then
+             echo "No hay workflows/*.json"
+             exit 0
+           fi
+           # PASO CLAVE: no poner comillas al glob ni aquí ni pasar literal
+           n8n import:workflow --input "$@"
+          '
           else
-            echo "ℹ️ No hay workflows/*.json en el repo; nada que importar"
+          echo "ℹ️ No hay workflows/*.json en el repo; nada que importar"
           fi
 
       - name: Logs al fallar
