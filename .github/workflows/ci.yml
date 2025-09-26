@@ -14,7 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CONTAINER: n8n-ci
-      # Clave dummy: solo para inicializar cifrado en la CLI
       N8N_ENCRYPTION_KEY: dummy0123456789dummy0123456789dummy0123456789abcd
 
     steps:
@@ -36,14 +35,48 @@ jobs:
           fi
           echo "NEW_IMAGE=${NEW_IMAGE}" | tee -a "$GITHUB_OUTPUT"
 
-      # ─────────────────────────────────────────────────────────────────────────────
-      # 1) Linter topológico "a lo tests", sin n8n: verifica conexiones y triggers
-      # ─────────────────────────────────────────────────────────────────────────────
-      - name: "Topology lint (no-run): check nodes & connections"
+      # ────────────────────────────────────────────────────────────
+      # 0) Normaliza active=false en copias temporales (no repo)
+      # ────────────────────────────────────────────────────────────
+      - name: Normalize workflows (active=false) to temp dir
+        id: normalize
         shell: bash
         run: |
           set -euo pipefail
-          if ! ls workflows/*.json >/dev/null 2>&1; then
+          TMPDIR=$(mktemp -d)
+          ANY_ACTIVE=0
+          if ls workflows/*.json >/dev/null 2>&1; then
+            for f in workflows/*.json; do
+              # detecta si venía activo
+              if jq -e '.active == true' "$f" >/dev/null 2>&1; then
+                ANY_ACTIVE=1
+              fi
+              jq 'if has("active") then .active=false else . end' "$f" > "$TMPDIR/$(basename "$f")"
+            done
+            echo "SRC_DIR=$TMPDIR" >> "$GITHUB_OUTPUT"
+            echo "ANY_ACTIVE=$ANY_ACTIVE" >> "$GITHUB_OUTPUT"
+          else
+            echo "SRC_DIR=workflows" >> "$GITHUB_OUTPUT"
+            echo "ANY_ACTIVE=0" >> "$GITHUB_OUTPUT"
+            echo "ℹ️ No hay workflows/*.json en el repo"
+          fi
+
+      - name: Warn if any workflow was active
+        if: steps.normalize.outputs.ANY_ACTIVE == '1'
+        run: |
+          echo "⚠️ Se detectó al menos un workflow con \"active:true\" en el repo."
+          echo "   En CI se normaliza a active:false para evitar ejecuciones accidentales."
+
+      # ────────────────────────────────────────────────────────────
+      # 1) Linter topológico: ahora lee de SRC_DIR normalizado
+      # ────────────────────────────────────────────────────────────
+      - name: "Topology lint (no-run): check nodes & connections"
+        shell: bash
+        env:
+          SRC_DIR: ${{ steps.normalize.outputs.SRC_DIR }}
+        run: |
+          set -euo pipefail
+          if ! ls "$SRC_DIR"/*.json >/dev/null 2>&1; then
             echo "ℹ️ No hay workflows/*.json; salto linter topológico"
             exit 0
           fi
@@ -52,11 +85,10 @@ jobs:
           const fs = require('fs');
           const path = require('path');
 
-          // Heurísticos para detectar "triggers" sin ejecutar nada:
           const TRIGGER_NAME_HINTS = ['trigger','cron','webhook','schedule','start','manual'];
           const TRIGGER_TYPE_HINTS = ['Trigger','cron','webhook','n8n-nodes-base.manualTrigger'];
 
-          const dir = 'workflows';
+          const dir = process.env.SRC_DIR || 'workflows';
           const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
           const errors = [];
 
@@ -70,15 +102,12 @@ jobs:
             const conns = wf.connections || {};
             if (nodes.length === 0) { errors.push(`[${file}] No hay nodes[]`); continue; }
 
-            // 1) nombres únicos
             const names = nodes.map(n => n.name);
             const dups = names.filter((n,i)=>names.indexOf(n)!==i);
             if (dups.length) errors.push(`[${file}] Nombres de nodo duplicados: ${[...new Set(dups)].join(', ')}`);
 
-            // 2) índice por nombre
             const byName = new Map(nodes.map(n => [n.name, n]));
 
-            // 3) triggers (heurístico)
             const isTrigger = (n) => {
               const nm = String(n.name||'').toLowerCase();
               const tp = String(n.type||'');
@@ -89,15 +118,11 @@ jobs:
             if (triggers.length === 0)
               errors.push(`[${file}] No se detectó ningún nodo "trigger" (Manual Trigger / Cron / Webhook, etc.)`);
 
-            // 4) validar conexiones y construir grafo
             const outgoing = new Map(nodes.map(n => [n.name, new Set()]));
             const incomingCount = new Map(nodes.map(n => [n.name, 0]));
 
             for (const [from, outs] of Object.entries(conns)) {
-              if (!byName.has(from)) {
-                errors.push(`[${file}] Conexiones desde nodo inexistente: "${from}"`);
-                continue;
-              }
+              if (!byName.has(from)) { errors.push(`[${file}] Conexiones desde nodo inexistente: "${from}"`); continue; }
               if (!outs || typeof outs !== 'object') continue;
               for (const arr of Object.values(outs)) {
                 if (!Array.isArray(arr)) continue;
@@ -105,10 +130,7 @@ jobs:
                   if (!Array.isArray(channel)) continue;
                   for (const edge of channel) {
                     const to = edge && edge.node;
-                    if (!to || !byName.has(to)) {
-                      errors.push(`[${file}] Conexión apunta a nodo inexistente: "${from}" -> "${to}"`);
-                      continue;
-                    }
+                    if (!to || !byName.has(to)) { errors.push(`[${file}] Conexión apunta a nodo inexistente: "${from}" -> "${to}"`); continue; }
                     outgoing.get(from).add(to);
                     incomingCount.set(to, (incomingCount.get(to)||0) + 1);
                   }
@@ -116,14 +138,11 @@ jobs:
               }
             }
 
-            // 5) nodos no-trigger con 0 entradas
             for (const n of nodes) {
-              if (!isTrigger(n) && (incomingCount.get(n.name)||0) === 0) {
+              if (!isTrigger(n) && (incomingCount.get(n.name)||0) === 0)
                 errors.push(`[${file}] Nodo sin entradas y no es trigger: "${n.name}"`);
-              }
             }
 
-            // 6) alcanzabilidad desde algún trigger
             if (triggers.length) {
               const seen = new Set(triggers.map(t=>t.name));
               const stack = [...seen];
@@ -134,26 +153,20 @@ jobs:
               const unreachable = nodes.map(n=>n.name).filter(n => !seen.has(n));
               if (unreachable.length) errors.push(`[${file}] Nodos no alcanzables desde un trigger: ${unreachable.join(', ')}`);
             }
-
-            // 7) (opcional) impedir "active:true" en CI
-            if (wf.active === true) errors.push(`[${file}] El workflow viene con "active:true" (no se ejecuta en esta CI, pero mejor evitarlo)`);
           }
 
-          if (errors.length) {
-            console.error('❌ Topology lint falló:\n' + errors.map(e => ' - ' + e).join('\n'));
-            process.exit(1);
-          } else {
-            console.log('✅ Topology lint OK (conexiones y triggers plausibles)');
-          }
+          if (errors.length) { console.error('❌ Topology lint falló:\n' + errors.map(e => ' - ' + e).join('\n')); process.exit(1); }
+          console.log('✅ Topology lint OK (conexiones y triggers plausibles)');
           NODE
 
-      # ─────────────────────────────────────────────────────────────────────────────
-      # 2) Import test con CLI de n8n, sin servidor, sin red (NO ejecuta nada)
-      # ─────────────────────────────────────────────────────────────────────────────
+      # ────────────────────────────────────────────────────────────
+      # 2) Import test con CLI (no server, no network)
+      # ────────────────────────────────────────────────────────────
       - name: Validate import with n8n CLI only (no server, no network)
         shell: bash
         env:
           NEW_IMAGE: ${{ steps.newimg.outputs.NEW_IMAGE }}
+          SRC_DIR: ${{ steps.normalize.outputs.SRC_DIR }}
         run: |
           set -euo pipefail
           NAME="${CONTAINER}"
@@ -172,22 +185,8 @@ jobs:
             --entrypoint sh \
             "${NEW_IMAGE}" -lc 'sleep infinity'
 
-          # Versión de CLI (debug)
           docker exec "${NAME}" sh -lc 'n8n -v || true'
 
-          # (opcional) Forzar active=false en CI para máxima higiene
-          if ls workflows/*.json >/dev/null 2>&1; then
-            echo "→ Normalizando active=false (solo en CI, sin modificar tu repo)"
-            tmpdir=$(mktemp -d)
-            for f in workflows/*.json; do
-              jq 'if has("active") then .active=false else . end' "$f" > "$tmpdir/$(basename "$f")"
-            done
-            SRC_DIR="$tmpdir"
-          else
-            SRC_DIR="workflows"
-          fi
-
-          # Copiar e importar uno a uno
           if ls "$SRC_DIR"/*.json >/dev/null 2>&1; then
             docker exec "${NAME}" sh -lc 'mkdir -p /home/node/import'
             docker cp "$SRC_DIR/." "${NAME}:/home/node/import/"
@@ -209,7 +208,6 @@ jobs:
             echo "ℹ️ No hay workflows/*.json en el repo; skipping import"
           fi
 
-          # Round-trip export: comprueba que lo importado se puede volver a leer
           docker exec "${NAME}" sh -lc '
             set -e
             mkdir -p /tmp/export
@@ -217,7 +215,6 @@ jobs:
             echo "🧪 Ficheros exportados:"; ls -1 /tmp/export || true
           '
 
-          # Si importaste >=1, exige que exporte >=1
           if ls "$SRC_DIR"/*.json >/dev/null 2>&1; then
             EXPORTED=$(docker exec "${NAME}" sh -lc 'ls -1 /tmp/export 2>/dev/null | wc -l')
             if [ "${EXPORTED:-0}" -lt 1 ]; then
