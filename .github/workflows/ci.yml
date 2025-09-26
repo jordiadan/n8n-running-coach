@@ -1,4 +1,4 @@
-name: Validate n8n workflows (compat & smoke)
+name: Validate n8n workflows (PR import + topology lint, no run)
 
 on:
   pull_request:
@@ -7,29 +7,27 @@ on:
       - "Dockerfile"
       - "workflows/**"
       - ".github/workflows/**"
-      - "fly.toml"
   workflow_dispatch:
 
 jobs:
-  validate:
+  validate-new-image:
     runs-on: ubuntu-latest
     env:
       CONTAINER: n8n-ci
-      # clave aleatoria solo para que n8n pueda descifrar/arrancar
+      # Clave dummy: solo para inicializar cifrado en la CLI
       N8N_ENCRYPTION_KEY: dummy0123456789dummy0123456789dummy0123456789abcd
 
     steps:
       - name: Checkout PR branch
         uses: actions/checkout@v4
 
-      - name: Get NEW_IMAGE from PR Dockerfile
+      - name: Detect NEW_IMAGE from PR Dockerfile
         id: newimg
         shell: bash
         run: |
           set -euo pipefail
           NEW_IMAGE=$(grep -Eo 'n8nio/n8n:[0-9]+\.[0-9]+\.[0-9]+' Dockerfile | head -n1 || true)
           if [ -z "${NEW_IMAGE:-}" ]; then
-            # fallback: línea FROM n8nio/n8n:...
             NEW_IMAGE=$(grep -Eo 'FROM[[:space:]]+n8nio/n8n:[^[:space:]]+' Dockerfile | awk '{print $2}' | head -n1 || true)
           fi
           if [ -z "${NEW_IMAGE:-}" ]; then
@@ -38,80 +36,204 @@ jobs:
           fi
           echo "NEW_IMAGE=${NEW_IMAGE}" | tee -a "$GITHUB_OUTPUT"
 
-      - name: Get OLD_IMAGE from main
-        id: oldimg
+      # ─────────────────────────────────────────────────────────────────────────────
+      # 1) Linter topológico "a lo tests", sin n8n: verifica conexiones y triggers
+      # ─────────────────────────────────────────────────────────────────────────────
+      - name: "Topology lint (no-run): check nodes & connections"
         shell: bash
         run: |
           set -euo pipefail
-          git fetch origin main --depth=1
-          git show origin/main:Dockerfile > /tmp/Dockerfile.main
-          OLD_IMAGE=$(grep -Eo 'n8nio/n8n:[0-9]+\.[0-9]+\.[0-9]+' /tmp/Dockerfile.main | head -n1 || true)
-          if [ -z "${OLD_IMAGE:-}" ]; then
-            OLD_IMAGE=$(grep -Eo 'FROM[[:space:]]+n8nio/n8n:[^[:space:]]+' /tmp/Dockerfile.main | awk '{print $2}' | head -n1 || true)
+          if ! ls workflows/*.json >/dev/null 2>&1; then
+            echo "ℹ️ No hay workflows/*.json; salto linter topológico"
+            exit 0
           fi
-          if [ -z "${OLD_IMAGE:-}" ]; then
-            echo "❌ No pude detectar la imagen de n8n en el Dockerfile de main"
-            exit 1
-          fi
-          echo "OLD_IMAGE=${OLD_IMAGE}" | tee -a "$GITHUB_OUTPUT"
 
-      - name: Run matrix locally (OLD & NEW)
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+
+          // Heurísticos para detectar "triggers" sin ejecutar nada:
+          const TRIGGER_NAME_HINTS = ['trigger','cron','webhook','schedule','start','manual'];
+          const TRIGGER_TYPE_HINTS = ['Trigger','cron','webhook','n8n-nodes-base.manualTrigger'];
+
+          const dir = 'workflows';
+          const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
+          const errors = [];
+
+          for (const file of files) {
+            const full = path.join(dir, file);
+            let wf;
+            try { wf = JSON.parse(fs.readFileSync(full, 'utf8')); }
+            catch (e) { errors.push(`[${file}] JSON inválido: ${e.message}`); continue; }
+
+            const nodes = Array.isArray(wf.nodes) ? wf.nodes : [];
+            const conns = wf.connections || {};
+            if (nodes.length === 0) { errors.push(`[${file}] No hay nodes[]`); continue; }
+
+            // 1) nombres únicos
+            const names = nodes.map(n => n.name);
+            const dups = names.filter((n,i)=>names.indexOf(n)!==i);
+            if (dups.length) errors.push(`[${file}] Nombres de nodo duplicados: ${[...new Set(dups)].join(', ')}`);
+
+            // 2) índice por nombre
+            const byName = new Map(nodes.map(n => [n.name, n]));
+
+            // 3) triggers (heurístico)
+            const isTrigger = (n) => {
+              const nm = String(n.name||'').toLowerCase();
+              const tp = String(n.type||'');
+              return TRIGGER_NAME_HINTS.some(h => nm.includes(h)) ||
+                     TRIGGER_TYPE_HINTS.some(h => tp.includes(h));
+            };
+            const triggers = nodes.filter(isTrigger);
+            if (triggers.length === 0)
+              errors.push(`[${file}] No se detectó ningún nodo "trigger" (Manual Trigger / Cron / Webhook, etc.)`);
+
+            // 4) validar conexiones y construir grafo
+            const outgoing = new Map(nodes.map(n => [n.name, new Set()]));
+            const incomingCount = new Map(nodes.map(n => [n.name, 0]));
+
+            for (const [from, outs] of Object.entries(conns)) {
+              if (!byName.has(from)) {
+                errors.push(`[${file}] Conexiones desde nodo inexistente: "${from}"`);
+                continue;
+              }
+              if (!outs || typeof outs !== 'object') continue;
+              for (const arr of Object.values(outs)) {
+                if (!Array.isArray(arr)) continue;
+                for (const channel of arr) {
+                  if (!Array.isArray(channel)) continue;
+                  for (const edge of channel) {
+                    const to = edge && edge.node;
+                    if (!to || !byName.has(to)) {
+                      errors.push(`[${file}] Conexión apunta a nodo inexistente: "${from}" -> "${to}"`);
+                      continue;
+                    }
+                    outgoing.get(from).add(to);
+                    incomingCount.set(to, (incomingCount.get(to)||0) + 1);
+                  }
+                }
+              }
+            }
+
+            // 5) nodos no-trigger con 0 entradas
+            for (const n of nodes) {
+              if (!isTrigger(n) && (incomingCount.get(n.name)||0) === 0) {
+                errors.push(`[${file}] Nodo sin entradas y no es trigger: "${n.name}"`);
+              }
+            }
+
+            // 6) alcanzabilidad desde algún trigger
+            if (triggers.length) {
+              const seen = new Set(triggers.map(t=>t.name));
+              const stack = [...seen];
+              while (stack.length) {
+                const cur = stack.pop();
+                for (const to of (outgoing.get(cur)||[])) if (!seen.has(to)) { seen.add(to); stack.push(to); }
+              }
+              const unreachable = nodes.map(n=>n.name).filter(n => !seen.has(n));
+              if (unreachable.length) errors.push(`[${file}] Nodos no alcanzables desde un trigger: ${unreachable.join(', ')}`);
+            }
+
+            // 7) (opcional) impedir "active:true" en CI
+            if (wf.active === true) errors.push(`[${file}] El workflow viene con "active:true" (no se ejecuta en esta CI, pero mejor evitarlo)`);
+          }
+
+          if (errors.length) {
+            console.error('❌ Topology lint falló:\n' + errors.map(e => ' - ' + e).join('\n'));
+            process.exit(1);
+          } else {
+            console.log('✅ Topology lint OK (conexiones y triggers plausibles)');
+          }
+          NODE
+
+      # ─────────────────────────────────────────────────────────────────────────────
+      # 2) Import test con CLI de n8n, sin servidor, sin red (NO ejecuta nada)
+      # ─────────────────────────────────────────────────────────────────────────────
+      - name: Validate import with n8n CLI only (no server, no network)
         shell: bash
         env:
-          OLD_IMAGE: ${{ steps.oldimg.outputs.OLD_IMAGE }}
           NEW_IMAGE: ${{ steps.newimg.outputs.NEW_IMAGE }}
         run: |
           set -euo pipefail
+          NAME="${CONTAINER}"
 
-          run_suite () {
-            local IMAGE="$1"
-            echo "▶️ Probando imagen: ${IMAGE}"
+          echo "▶️ Import test con imagen: ${NEW_IMAGE}"
+          docker run -d --name "${NAME}" \
+            --network none \
+            --init \
+            -e N8N_ENCRYPTION_KEY="${N8N_ENCRYPTION_KEY}" \
+            -e GENERIC_TIMEZONE=Europe/Madrid \
+            -e N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true \
+            -e N8N_RUNNERS_ENABLED=false \
+            -e N8N_DIAGNOSTICS_ENABLED=false \
+            -e N8N_VERSION_NOTIFICATIONS_ENABLED=false \
+            -e DB_SQLITE_POOL_SIZE=2 \
+            --entrypoint sh \
+            "${NEW_IMAGE}" -lc 'sleep infinity'
 
-            docker run -d --name "${CONTAINER}" \
-              --network none \
-              -p 5678:5678 \
-              -e N8N_LISTEN_ADDRESS=0.0.0.0 \
-              -e N8N_PORT=5678 \
-              -e N8N_BASIC_AUTH_ACTIVE=false \
-              -e N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true \
-              -e GENERIC_TIMEZONE=Europe/Madrid \
-              -e N8N_ENCRYPTION_KEY="${N8N_ENCRYPTION_KEY}" \
-              "${IMAGE}"
+          # Versión de CLI (debug)
+          docker exec "${NAME}" sh -lc 'n8n -v || true'
 
-            # Espera activa a healthz
-            for i in $(seq 1 150); do
-              if curl -fsS http://localhost:5678/healthz >/dev/null; then
-                echo "✅ n8n up (${IMAGE})"
-                break
-              fi
-              sleep 2
+          # (opcional) Forzar active=false en CI para máxima higiene
+          if ls workflows/*.json >/dev/null 2>&1; then
+            echo "→ Normalizando active=false (solo en CI, sin modificar tu repo)"
+            tmpdir=$(mktemp -d)
+            for f in workflows/*.json; do
+              jq 'if has("active") then .active=false else . end' "$f" > "$tmpdir/$(basename "$f")"
             done
-            curl -fsS http://localhost:5678/healthz >/dev/null || { echo "❌ n8n no levantó a tiempo (${IMAGE})"; docker logs --tail 300 "${CONTAINER}" || true; exit 1; }
+            SRC_DIR="$tmpdir"
+          else
+            SRC_DIR="workflows"
+          fi
 
-            # Importar workflows si existen
-            if ls workflows/*.json >/dev/null 2>&1; then
-              docker exec "${CONTAINER}" sh -lc 'mkdir -p /home/node/import'
-              docker cp workflows/. "${CONTAINER}:/home/node/import/"
+          # Copiar e importar uno a uno
+          if ls "$SRC_DIR"/*.json >/dev/null 2>&1; then
+            docker exec "${NAME}" sh -lc 'mkdir -p /home/node/import'
+            docker cp "$SRC_DIR/." "${NAME}:/home/node/import/"
 
-              # Si hay ficheros, importamos; si no, mensaje informativo
-              docker exec "${CONTAINER}" sh -lc '
-                set -e
-                count=$(ls -1 /home/node/import/*.json 2>/dev/null | wc -l)
-                if [ "$count" -eq 0 ]; then
-                  echo "ℹ️ No hay workflows/*.json que importar dentro del contenedor"
-                else
-                  echo "→ Importando $count workflow(s)…"
-                  n8n import:workflow --input "/home/node/import/*.json"
-                fi
-              '
-            else
-              echo "ℹ️ No hay workflows/*.json en el repo; nada que importar"
+            docker exec "${NAME}" sh -lc '
+              set -eu
+              count=$(ls -1 /home/node/import/*.json 2>/dev/null | wc -l)
+              if [ "$count" -eq 0 ]; then
+                echo "ℹ️ No hay workflows/*.json que importar dentro del contenedor"
+              else
+                echo "→ Importando $count workflow(s)…"
+                for f in /home/node/import/*.json; do
+                  echo "   n8n import:workflow --input \"$f\""
+                  n8n import:workflow --input "$f"
+                done
+              fi
+            '
+          else
+            echo "ℹ️ No hay workflows/*.json en el repo; skipping import"
+          fi
+
+          # Round-trip export: comprueba que lo importado se puede volver a leer
+          docker exec "${NAME}" sh -lc '
+            set -e
+            mkdir -p /tmp/export
+            n8n export:workflow --all --output /tmp/export || true
+            echo "🧪 Ficheros exportados:"; ls -1 /tmp/export || true
+          '
+
+          # Si importaste >=1, exige que exporte >=1
+          if ls "$SRC_DIR"/*.json >/dev/null 2>&1; then
+            EXPORTED=$(docker exec "${NAME}" sh -lc 'ls -1 /tmp/export 2>/dev/null | wc -l')
+            if [ "${EXPORTED:-0}" -lt 1 ]; then
+              echo "❌ Import pareció OK pero export devolvió 0"
+              docker logs --tail 200 "${NAME}" || true
+              exit 1
             fi
+          fi
 
-            # Apagar contenedor
-            docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
-            echo "✅ Smoke OK para ${IMAGE}"
-          }
+          docker rm -f "${NAME}" >/dev/null 2>&1 || true
+          echo "✅ Compat OK en NEW_IMAGE"
 
-          run_suite "${OLD_IMAGE}"
-          run_suite "${NEW_IMAGE}"
+      - name: On failure, dump diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          docker ps -a || true
+          docker logs --tail 400 "${CONTAINER}" || true
+          docker rm -f "${CONTAINER}" || true
