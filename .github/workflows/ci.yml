@@ -1,0 +1,117 @@
+name: Validate n8n workflows (compat & smoke)
+
+on:
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - "Dockerfile"
+      - "workflows/**"
+      - ".github/workflows/**"
+      - "fly.toml"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      CONTAINER: n8n-ci
+      # clave aleatoria solo para que n8n pueda descifrar/arrancar
+      N8N_ENCRYPTION_KEY: dummy0123456789dummy0123456789dummy0123456789abcd
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+
+      - name: Get NEW_IMAGE from PR Dockerfile
+        id: newimg
+        shell: bash
+        run: |
+          set -euo pipefail
+          NEW_IMAGE=$(grep -Eo 'n8nio/n8n:[0-9]+\.[0-9]+\.[0-9]+' Dockerfile | head -n1 || true)
+          if [ -z "${NEW_IMAGE:-}" ]; then
+            # fallback: línea FROM n8nio/n8n:...
+            NEW_IMAGE=$(grep -Eo 'FROM[[:space:]]+n8nio/n8n:[^[:space:]]+' Dockerfile | awk '{print $2}' | head -n1 || true)
+          fi
+          if [ -z "${NEW_IMAGE:-}" ]; then
+            echo "❌ No pude detectar la imagen de n8n en el Dockerfile del PR"
+            exit 1
+          fi
+          echo "NEW_IMAGE=${NEW_IMAGE}" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Get OLD_IMAGE from main
+        id: oldimg
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          git show origin/main:Dockerfile > /tmp/Dockerfile.main
+          OLD_IMAGE=$(grep -Eo 'n8nio/n8n:[0-9]+\.[0-9]+\.[0-9]+' /tmp/Dockerfile.main | head -n1 || true)
+          if [ -z "${OLD_IMAGE:-}" ]; then
+            OLD_IMAGE=$(grep -Eo 'FROM[[:space:]]+n8nio/n8n:[^[:space:]]+' /tmp/Dockerfile.main | awk '{print $2}' | head -n1 || true)
+          fi
+          if [ -z "${OLD_IMAGE:-}" ]; then
+            echo "❌ No pude detectar la imagen de n8n en el Dockerfile de main"
+            exit 1
+          fi
+          echo "OLD_IMAGE=${OLD_IMAGE}" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Run matrix locally (OLD & NEW)
+        shell: bash
+        env:
+          OLD_IMAGE: ${{ steps.oldimg.outputs.OLD_IMAGE }}
+          NEW_IMAGE: ${{ steps.newimg.outputs.NEW_IMAGE }}
+        run: |
+          set -euo pipefail
+
+          run_suite () {
+            local IMAGE="$1"
+            echo "▶️ Probando imagen: ${IMAGE}"
+
+            docker run -d --name "${CONTAINER}" \
+              --network none \
+              -p 5678:5678 \
+              -e N8N_LISTEN_ADDRESS=0.0.0.0 \
+              -e N8N_PORT=5678 \
+              -e N8N_BASIC_AUTH_ACTIVE=false \
+              -e N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true \
+              -e GENERIC_TIMEZONE=Europe/Madrid \
+              -e N8N_ENCRYPTION_KEY="${N8N_ENCRYPTION_KEY}" \
+              "${IMAGE}"
+
+            # Espera activa a healthz
+            for i in $(seq 1 150); do
+              if curl -fsS http://localhost:5678/healthz >/dev/null; then
+                echo "✅ n8n up (${IMAGE})"
+                break
+              fi
+              sleep 2
+            done
+            curl -fsS http://localhost:5678/healthz >/dev/null || { echo "❌ n8n no levantó a tiempo (${IMAGE})"; docker logs --tail 300 "${CONTAINER}" || true; exit 1; }
+
+            # Importar workflows si existen
+            if ls workflows/*.json >/dev/null 2>&1; then
+              docker exec "${CONTAINER}" sh -lc 'mkdir -p /home/node/import'
+              docker cp workflows/. "${CONTAINER}:/home/node/import/"
+
+              # Si hay ficheros, importamos; si no, mensaje informativo
+              docker exec "${CONTAINER}" sh -lc '
+                set -e
+                count=$(ls -1 /home/node/import/*.json 2>/dev/null | wc -l)
+                if [ "$count" -eq 0 ]; then
+                  echo "ℹ️ No hay workflows/*.json que importar dentro del contenedor"
+                else
+                  echo "→ Importando $count workflow(s)…"
+                  n8n import:workflow --input "/home/node/import/*.json"
+                fi
+              '
+            else
+              echo "ℹ️ No hay workflows/*.json en el repo; nada que importar"
+            fi
+
+            # Apagar contenedor
+            docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
+            echo "✅ Smoke OK para ${IMAGE}"
+          }
+
+          run_suite "${OLD_IMAGE}"
+          run_suite "${NEW_IMAGE}"
