@@ -8,7 +8,7 @@ dockerfile = "Dockerfile"
 N8N_PORT = "5678"
 N8N_LISTEN_ADDRESS = "0.0.0.0"
 GENERIC_TIMEZONE = "Europe/Madrid"
-# NUNCA pongas N8N_ENCRYPTION_KEY aquí: se inyecta como secret
+TZ = "Europe/Madrid"
 
 [[services]]
 internal_port = 5678
