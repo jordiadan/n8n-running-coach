@@ -39,4 +39,7 @@ jobs:
 
       - name: Cleanup temp artifacts
         if: success()
-        run: rm -rf .tmp
+        run: |
+          if [ -d .tmp ]; then
+            sudo rm -rf .tmp || (sudo chmod -R u+rwX .tmp && sudo rm -rf .tmp)
+          fi
