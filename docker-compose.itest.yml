@@ -23,7 +23,10 @@ services:
       - integration
 
   n8n:
-    image: n8nio/n8n:1.111.1
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: n8n-running-coach:test
     depends_on:
       mock:
         condition: service_started
