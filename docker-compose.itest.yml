@@ -1,0 +1,63 @@
+services:
+  mock:
+    image: mockserver/mockserver:5.15.0
+    ports:
+      - "1080:1080"
+    environment:
+      MOCKSERVER_DISABLE_SYSTEM_OUT: "true"
+    networks:
+      - integration
+
+  mongo:
+    image: mongo:7.0
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: running_coach_itest
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "mongodb://localhost:27017/running_coach_itest", "--eval", "db.stats()"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks:
+      - integration
+
+  n8n:
+    image: n8nio/n8n:1.111.1
+    depends_on:
+      mock:
+        condition: service_started
+      mongo:
+        condition: service_healthy
+    ports:
+      - "5678:5678"
+    environment:
+      N8N_BASIC_AUTH_ACTIVE: "false"
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-itest-encryption-key}
+      N8N_EDITOR_BASE_URL: http://localhost:5678
+      N8N_HIRING_BANNER_ENABLED: "false"
+      N8N_HOST: 0.0.0.0
+      N8N_JWT_AUTH_ACTIVE: "false"
+      N8N_LOG_LEVEL: debug
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: http
+      N8N_USER_MANAGEMENT_DISABLED: "true"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+      DB_TYPE: sqlite
+      DB_SQLITE_DATABASE: /home/node/.n8n/database.sqlite
+      EXECUTIONS_MODE: regular
+      EXECUTIONS_PROCESS: main
+      GENERIC_TIMEZONE: UTC
+      NODE_FUNCTION_ALLOW_EXTERNAL: "true"
+      WEBHOOK_TUNNEL_URL: http://localhost:5678
+      WEBHOOK_URL: http://localhost:5678
+    volumes:
+      - ./.tmp/n8n:/home/node/.n8n
+    networks:
+      - integration
+
+networks:
+  integration:
+    external: true
+    name: integration_test_network

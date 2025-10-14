@@ -1,0 +1,251 @@
+[
+  {
+    "httpRequest": {
+      "method": "GET",
+      "path": "/api/v1/athlete/i372001/activities"
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "headers": [
+        {
+          "name": "Content-Type",
+          "values": [
+            "application/json"
+          ]
+        }
+      ],
+      "body": {
+        "type": "JSON",
+        "json": [
+          {
+            "id": "activity-run-easy",
+            "icu_athlete_id": 372001,
+            "name": "Easy run city loop",
+            "start_date": "2024-08-12T07:00:00.000Z",
+            "type": "Run",
+            "elapsed_time": 2700,
+            "distance": 7800,
+            "calories": 520,
+            "trimp": 45,
+            "icu_ctl": 74,
+            "icu_atl": 70,
+            "rampRate": 4,
+            "icu_rampRate": 4,
+            "average_heartrate": 139,
+            "max_heartrate": 164,
+            "sportInfo": [
+              {
+                "sport": "Run"
+              }
+            ],
+            "interval_summary": [
+              "1x45min Z2"
+            ]
+          },
+          {
+            "id": "activity-run-tempo",
+            "icu_athlete_id": 372001,
+            "name": "Tempo threshold",
+            "start_date": "2024-08-14T18:00:00.000Z",
+            "type": "Run",
+            "elapsed_time": 3600,
+            "distance": 10000,
+            "calories": 720,
+            "trimp": 80,
+            "icu_ctl": 76,
+            "icu_atl": 72,
+            "rampRate": 4,
+            "icu_rampRate": 4,
+            "average_heartrate": 154,
+            "max_heartrate": 182,
+            "sportInfo": [
+              {
+                "sport": "Run"
+              }
+            ],
+            "interval_summary": [
+              "3x10min Z4"
+            ]
+          },
+          {
+            "id": "activity-ride-endurance",
+            "icu_athlete_id": 372001,
+            "name": "Endurance ride",
+            "start_date": "2024-08-16T08:30:00.000Z",
+            "type": "Ride",
+            "elapsed_time": 5400,
+            "distance": 32000,
+            "calories": 960,
+            "trimp": 70,
+            "icu_ctl": 75,
+            "icu_atl": 71,
+            "rampRate": 4,
+            "icu_rampRate": 4,
+            "average_heartrate": 142,
+            "max_heartrate": 168,
+            "sportInfo": [
+              {
+                "sport": "Ride"
+              }
+            ],
+            "interval_summary": [
+              "2h steady Z2"
+            ]
+          },
+          {
+            "id": "activity-strength",
+            "icu_athlete_id": 372001,
+            "name": "Weight training",
+            "start_date": "2024-08-17T10:00:00.000Z",
+            "type": "WeightTraining",
+            "elapsed_time": 3600,
+            "distance": 0,
+            "calories": 420,
+            "trimp": 25,
+            "icu_ctl": 74,
+            "icu_atl": 70,
+            "rampRate": 4,
+            "icu_rampRate": 4,
+            "average_heartrate": 120,
+            "max_heartrate": 138,
+            "sportInfo": [
+              {
+                "sport": "Strength"
+              }
+            ],
+            "interval_summary": [
+              "Full body circuit"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "httpRequest": {
+      "method": "GET",
+      "path": "/api/v1/athlete/i372001/wellness"
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "headers": [
+        {
+          "name": "Content-Type",
+          "values": [
+            "application/json"
+          ]
+        }
+      ],
+      "body": {
+        "type": "JSON",
+        "json": [
+          {
+            "id": "2024-08-12",
+            "icu_athlete_id": 372001,
+            "updated": "2024-08-12T22:00:00.000Z",
+            "ctl": 74,
+            "atl": 70,
+            "rampRate": 4,
+            "ctlLoad": 30,
+            "atlLoad": 34,
+            "restingHR": 52,
+            "hrv": 70,
+            "sleepScore": 79,
+            "steps": 9200,
+            "weight": 72.5
+          },
+          {
+            "id": "2024-08-13",
+            "icu_athlete_id": 372001,
+            "updated": "2024-08-13T22:00:00.000Z",
+            "ctl": 74,
+            "atl": 71,
+            "rampRate": 3,
+            "ctlLoad": 31,
+            "atlLoad": 35,
+            "restingHR": 51,
+            "hrv": 72,
+            "sleepScore": 82,
+            "steps": 9800,
+            "weight": 72.4
+          },
+          {
+            "id": "2024-08-14",
+            "icu_athlete_id": 372001,
+            "updated": "2024-08-14T22:00:00.000Z",
+            "ctl": 75,
+            "atl": 73,
+            "rampRate": 2,
+            "ctlLoad": 33,
+            "atlLoad": 36,
+            "restingHR": 52,
+            "hrv": 68,
+            "sleepScore": 77,
+            "steps": 8900,
+            "weight": 72.6
+          },
+          {
+            "id": "2024-08-15",
+            "icu_athlete_id": 372001,
+            "updated": "2024-08-15T22:00:00.000Z",
+            "ctl": 75,
+            "atl": 72,
+            "rampRate": 3,
+            "ctlLoad": 32,
+            "atlLoad": 34,
+            "restingHR": 53,
+            "hrv": 69,
+            "sleepScore": 80,
+            "steps": 9100,
+            "weight": 72.3
+          },
+          {
+            "id": "2024-08-16",
+            "icu_athlete_id": 372001,
+            "updated": "2024-08-16T22:00:00.000Z",
+            "ctl": 76,
+            "atl": 72,
+            "rampRate": 4,
+            "ctlLoad": 34,
+            "atlLoad": 36,
+            "restingHR": 52,
+            "hrv": 71,
+            "sleepScore": 78,
+            "steps": 9400,
+            "weight": 72.2
+          },
+          {
+            "id": "2024-08-17",
+            "icu_athlete_id": 372001,
+            "updated": "2024-08-17T22:00:00.000Z",
+            "ctl": 76,
+            "atl": 71,
+            "rampRate": 5,
+            "ctlLoad": 35,
+            "atlLoad": 34,
+            "restingHR": 51,
+            "hrv": 73,
+            "sleepScore": 83,
+            "steps": 10020,
+            "weight": 72.1
+          },
+          {
+            "id": "2024-08-18",
+            "icu_athlete_id": 372001,
+            "updated": "2024-08-18T22:00:00.000Z",
+            "ctl": 76,
+            "atl": 70,
+            "rampRate": 6,
+            "ctlLoad": 36,
+            "atlLoad": 33,
+            "restingHR": 50,
+            "hrv": 75,
+            "sleepScore": 85,
+            "steps": 10400,
+            "weight": 72.3
+          }
+        ]
+      }
+    }
+  }
+]
