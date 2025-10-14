@@ -1,4 +1,3 @@
-# .github/workflows/compat.yml
 name: Compat Check
 
 on:
@@ -8,13 +7,13 @@ on:
       - 'workflows/**'
       - 'Dockerfile'
       - 'package-lock.json'
-      - '.github/workflows/compat.yml'
+      - '.github/workflows/compat-check.yml'
   push:
     branches: [ main ]
     paths:
       - 'workflows/**'
       - 'Dockerfile'
-      - '.github/workflows/compat.yml'
+      - '.github/workflows/compat-check.yml'
 
 concurrency:
   group: compat-${{ github.ref }}
@@ -49,7 +48,7 @@ jobs:
             -e N8N_BASIC_AUTH_ACTIVE=false \
             -e GENERIC_TIMEZONE=Europe/Madrid \
             -e N8N_ENCRYPTION_KEY="$N8N_ENCRYPTION_KEY" \
-            n8nio/n8n:1.94.0
+            n8nio/n8n:1.111.1
 
           for i in {1..150}; do
             curl -fsS http://localhost:5678/ >/dev/null && { echo "✅ n8n up"; break; }
