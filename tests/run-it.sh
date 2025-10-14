@@ -239,6 +239,7 @@ docker info >/dev/null 2>&1 || {
 rm -rf "$TMP_DIR"
 mkdir -p "$TMP_DIR" "$TMP_DIR/n8n"
 mkdir -p "$REPO_ROOT/.tmp/n8n"
+chmod -R 777 "$TMP_DIR" "$REPO_ROOT/.tmp/n8n"
 
 "${COMPOSE_CMD[@]}" down -v >/dev/null 2>&1 || true
 docker network create "$NETWORK_NAME" >/dev/null 2>&1 || true
