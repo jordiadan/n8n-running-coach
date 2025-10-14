@@ -1,13 +1,10 @@
 name: Deploy to Fly.io
 
 on:
-  push:
-    branches: ["main"]
-    paths:
-      - "Dockerfile"
-      - "fly.toml"
-      - ".github/workflows/deploy-fly.yml"
-      - "workflows/**"
+  workflow_run:
+    workflows: ['CI']
+    types:
+      - completed
   workflow_dispatch:
 
 concurrency:
@@ -19,16 +16,20 @@ env:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name || github.repository }}
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 1
 
       - name: Check required secrets
-        shell: bash
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
