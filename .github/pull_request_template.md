@@ -8,6 +8,7 @@
 
 ## Jira
 
+- Workspace/Board: `Running Coach` (`RC` / board `34`)
 - Ticket: RC-
 - Epic:
 - Sprint:
@@ -44,3 +45,4 @@
 - [ ] README/docs updated if behavior changed
 - [ ] Branch follows `RC-<id>-<kebab-title>`
 - [ ] PR title follows `RC-<id>: short clear title`
+- [ ] Jira ticket is in `Running Coach` board (`RC` / board `34`)

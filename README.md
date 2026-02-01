@@ -139,6 +139,9 @@ Deploy action:
 Jira backlog for this project:
 
 - `https://jordiadan.atlassian.net/jira/software/projects/RC/boards/34/backlog`
+- Board name: `Running Coach`
+
+Important: this is the only valid Jira workspace/board for this repository. All tickets, sprint planning, and status transitions must happen in `Running Coach` (project `RC`, board `34`).
 
 Working conventions are aligned with the `home-assistant` repository workflow style and adapted to this project:
 

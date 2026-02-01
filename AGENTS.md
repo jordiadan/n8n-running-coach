@@ -1,6 +1,7 @@
 # Instructions for AI / Codex
 
 Follow the workflow rules in `docs/AI_WORKFLOW.md` strictly:
+- use only Jira workspace `Running Coach` (`RC` project, board `34`): `https://jordiadan.atlassian.net/jira/software/projects/RC/boards/34/backlog`
 - one ticket = one branch
 - one task = one PR
 - branch naming: `RC-<id>-<kebab-title>`

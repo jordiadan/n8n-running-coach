@@ -5,6 +5,9 @@ If there is any conflict with other docs, this file is the source of truth.
 
 Jira board:
 - `https://jordiadan.atlassian.net/jira/software/projects/RC/boards/34/backlog`
+- Board name: `Running Coach`
+
+The authoritative Jira workspace for this repo is `Running Coach` (project `RC`, board `34`). Do not use any other Jira board for active work on this repository.
 
 ## 1) One Jira ticket = one branch
 
@@ -13,6 +16,7 @@ Jira board:
   - `RC-<id>-<task-title-in-kebab-case>`
   - Example: `RC-123-add-migrate-mongo-bootstrap`
 - Before starting work:
+  - ticket must exist in `Running Coach` board
   - ticket must be in the active sprint
   - ticket must be assigned to the work owner
   - ticket must be linked to the correct epic
