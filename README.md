@@ -150,26 +150,28 @@ Deploy action:
 
 ## Next Steps
 
-1. Parameterize athlete identity and Telegram destination
-   - Move athlete ID/chat ID into env vars or n8n variables.
-   - Support multi-athlete or multi-chat operation.
-2. Improve configuration hygiene
-   - Externalize model selection and planning constants (race date, plan start date).
-   - Remove hardcoded logic from code nodes where possible.
-3. Strengthen reliability
-   - Add retries/backoff and explicit error handling for upstream API failures.
-   - Add fallback behavior when one data source is temporarily unavailable.
-4. Expand test coverage
-   - Add focused tests for each transformation step (weekly metrics, prompt builder, formatter).
-   - Add contract tests for Intervals.icu payload shape changes.
-5. Harden production operations
-   - Align database config across Dockerfile, runtime env, and infrastructure.
-   - Add observability (structured logs, alerts, execution failure notifications).
-6. Improve coaching output quality
-   - Add validation schema for LLM JSON output before Telegram delivery.
-   - Track generated plan quality and adherence metrics over time.
+1. Enable a strong "vibe/live coding" workflow
+   - Add developer tooling for rapid iteration (local run scripts, templates, lint/format checks, docs for workflow editing conventions).
+   - Standardize how prompts, code nodes, and workflow JSON changes are reviewed.
+2. Add project-owned MongoDB migrations with `migrate-mongo`
+   - Track collection/index/data changes inside the repo so schema evolution is versioned and reproducible.
+   - Keep `Mongock` as an alternative only if the project later needs a Java-centric migration stack.
+3. Build scalable quality tests for future n8n upgrades
+   - Add versioned compatibility tests (smoke + integration) to validate workflow behavior across n8n releases.
+   - Add regression checks for node compatibility, execution output shape, and import/export stability.
+4. Build an interface to manage races and goals manually
+   - Create a small UI/API layer to add target races, time goals, constraints, and planning preferences.
+   - Feed those settings directly into the planning prompt/context.
+5. Improve data quality and data depth for better prompts
+   - Validate incoming payloads, enforce required fields, and monitor data freshness.
+   - Enrich context with cleaner trend metrics to improve plan quality and consistency.
+6. Add observability, guardrails, and safe delivery
+   - Add structured logs, failure alerts, and execution-level monitoring.
+   - Validate LLM output against a strict JSON schema before Telegram delivery, with fallback behavior.
+7. Define a safe release strategy
+   - Add canary rollout + rollback playbook for n8n upgrades and workflow changes.
+   - Document operational runbooks for incident response and rapid recovery.
 
 ## License
 
 No license file is currently included in this repository. Add one if you plan to distribute or open source the project.
-
