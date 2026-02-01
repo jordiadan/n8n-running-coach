@@ -134,6 +134,26 @@ Deploy action:
 - Stages encryption secret in Fly
 - Deploys app using `fly.toml`
 
+## Project Management and Team Workflow
+
+Jira backlog for this project:
+
+- `https://jordiadan.atlassian.net/jira/software/projects/RC/boards/34/backlog`
+
+Working conventions are aligned with the `home-assistant` repository workflow style and adapted to this project:
+
+- One Jira ticket = one branch.
+- One task = one PR.
+- No direct pushes to `main`/`master`.
+- Mandatory Jira status flow: `To do` -> `In progress` -> `In review` -> `Done`.
+- Every active issue must be in the current sprint and linked to the correct epic.
+
+For complete rules, see:
+
+- `docs/AI_WORKFLOW.md` (source of truth for workflow rules)
+- `AGENTS.md` (AI/Codex instruction entrypoint)
+- `.github/pull_request_template.md` (required PR structure)
+
 ## Runtime and Configuration Notes
 
 - The workflow currently contains hardcoded values (for example athlete ID and Telegram chat ID).

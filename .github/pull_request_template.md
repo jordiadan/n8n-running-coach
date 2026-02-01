@@ -6,6 +6,16 @@
 
 - 
 
+## Jira
+
+- Ticket: RC-
+- Epic:
+- Sprint:
+- Status transition checklist:
+  - [ ] moved to `In progress` when work started
+  - [ ] moved to `In review` when PR opened
+  - [ ] will move to `Done` after merge
+
 ## Scope
 
 - [ ] Workflow logic (`workflows/*.json`)
@@ -32,4 +42,5 @@
 - [ ] No secrets committed
 - [ ] Backward compatibility considered
 - [ ] README/docs updated if behavior changed
-
+- [ ] Branch follows `RC-<id>-<kebab-title>`
+- [ ] PR title follows `RC-<id>: short clear title`
