@@ -86,7 +86,7 @@
               "intensity": {
                 "type": "string",
                 "minLength": 1,
-                "pattern": "(Z[1-5]|interval|Interval|VO2|Tempo|tempo|Umbral|umbral|Threshold|threshold|Easy|easy|Recovery|recovery|\\u2014|--|-)"
+                "pattern": "^(?:-|--|\\u2014|.*\\b(Z[1-5]|interval|Interval|VO2|Tempo|tempo|Umbral|umbral|Threshold|threshold|Easy|easy|Recovery|recovery)\\b.*)$"
               },
               "goal": {
                 "type": "string",
