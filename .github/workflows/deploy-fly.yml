@@ -85,7 +85,7 @@ jobs:
           N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
         run: |
           set -euo pipefail
-          api_url="https://${APP}.fly.dev/rest/workflows/Q9nTNHZ5vUBf58oI"
+          api_url="https://${APP}.fly.dev/api/v1/workflows/Q9nTNHZ5vUBf58oI"
           echo "Updating workflow via API (app: $APP)"
           for attempt in {1..10}; do
             status=$(curl -s -o /tmp/n8n_update_response.json -w "%{http_code}" \
