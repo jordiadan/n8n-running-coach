@@ -156,6 +156,18 @@ patch_workflow() {
       else .
       end
     )
+    | .connections["Is WeeklyPlan valid? (attempt 0)"].main = [
+        [{ "node": "Build Repair Prompt (attempt 1)", "type": "main", "index": 0 }],
+        [{ "node": "Build Repair Prompt (attempt 1)", "type": "main", "index": 0 }]
+      ]
+    | .connections["Is WeeklyPlan valid? (attempt 1)"].main = [
+        [{ "node": "Build Repair Prompt (attempt 2)", "type": "main", "index": 0 }],
+        [{ "node": "Build Repair Prompt (attempt 2)", "type": "main", "index": 0 }]
+      ]
+    | .connections["Is WeeklyPlan valid? (attempt 2)"].main = [
+        [{ "node": "Build Telegram Message", "type": "main", "index": 0 }],
+        [{ "node": "Build Telegram Message", "type": "main", "index": 0 }]
+      ]
   ' "$WORKFLOW_FILE" > "$PATCHED_JSON"
 }
 
