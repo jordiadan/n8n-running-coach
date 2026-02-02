@@ -148,6 +148,7 @@ Required GitHub secrets:
 
 - `FLY_API_TOKEN`
 - `N8N_ENCRYPTION_KEY`
+- `N8N_API_KEY`
 
 Deploy action:
 
