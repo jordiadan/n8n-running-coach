@@ -113,13 +113,17 @@ seed_credentials() {
 
 patch_workflow() {
   echo "▶️  Patching workflow JSON"
-  local js_mock_llm js_mock_telegram
+  local js_mock_llm js_mock_repair_1 js_mock_repair_2 js_mock_telegram
 
-  js_mock_llm=$'return [{\n  json: {\n    activityPlan: {\n      nextWeek: {\n        phase: "Desarrollo",\n        objective: "Consolidar base aeróbica",\n        weekStart: "2025-10-13",\n        weekEnd: "2025-10-19"\n      },\n      days: [\n        { day: "Lunes", date: "2025-10-13", activity: "Easy run", distance_time: "40′", intensity: "Z2 (118-138 bpm)", goal: "Recuperación", note: "Movilidad + foam roller" },\n        { day: "Martes", date: "2025-10-14", activity: "Gimnasio", distance_time: "60′", intensity: "—", goal: "Fuerza (Pecho y brazos)" },\n        { day: "Miércoles", date: "2025-10-15", activity: "VO₂ máx", distance_time: "4×3′", intensity: "Z4–Z5 (168-188 bpm)", goal: "Potencia aeróbica" },\n        { day: "Jueves", date: "2025-10-16", activity: "Gimnasio", distance_time: "60′", intensity: "—", goal: "Fuerza (Espalda y hombros)" },\n        { day: "Viernes", date: "2025-10-17", activity: "Tempo / Umbral", distance_time: "30′", intensity: "Z3–Z4 (155-174 bpm)", goal: "Tolerancia lactato" },\n        { day: "Sábado", date: "2025-10-18", activity: "Gimnasio", distance_time: "60′", intensity: "—", goal: "Fuerza (Piernas)" },\n        { day: "Domingo", date: "2025-10-19", activity: "Long run", distance_time: "75′", intensity: "Z2 (118-138 bpm)", goal: "Base aeróbica progresiva", note: "Últimos 10′ a Z3" }\n      ]\n    },\n    justification: [\n      "Carga coherente con ATL y HRV recientes",\n      "VO₂ y tempo separados por ≥48h",\n      "Long run progresivo para consolidar CTL"\n    ]\n  }\n}];'
+  js_mock_llm=$'return [{\n  json: {\n    activityPlan: {\n      nextWeek: {\n        phase: "Desarrollo",\n        objective: "Consolidar base aeróbica",\n        weekStart: "2025-10-13",\n        weekEnd: "2025-10-19"\n      },\n      days: [\n        { day: "Lunes", date: "2025-10-13", activity: "Easy run", distance_time: "40′", intensity: "Hard", goal: "Recuperación", note: "Movilidad + foam roller" },\n        { day: "Martes", date: "2025-10-14", activity: "Gimnasio", distance_time: "60′", intensity: "—", goal: "Fuerza (Pecho y brazos)" },\n        { day: "Miércoles", date: "2025-10-15", activity: "VO₂ máx", distance_time: "4×3′", intensity: "Z4–Z5 (168-188 bpm)", goal: "Potencia aeróbica" },\n        { day: "Jueves", date: "2025-10-16", activity: "Gimnasio", distance_time: "60′", intensity: "—", goal: "Fuerza (Espalda y hombros)" },\n        { day: "Viernes", date: "2025-10-17", activity: "Tempo / Umbral", distance_time: "30′", intensity: "Z3–Z4 (155-174 bpm)", goal: "Tolerancia lactato" },\n        { day: "Sábado", date: "2025-10-18", activity: "Gimnasio", distance_time: "60′", intensity: "—", goal: "Fuerza (Piernas)" },\n        { day: "Domingo", date: "2025-10-19", activity: "Long run", distance_time: "75′", intensity: "Z2 (118-138 bpm)", goal: "Base aeróbica progresiva", note: "Últimos 10′ a Z3" }\n      ]\n    },\n    justification: [\n      "Carga coherente con ATL y HRV recientes",\n      "VO₂ y tempo separados por ≥48h",\n      "Long run progresivo para consolidar CTL"\n    ]\n  }\n}];'
+
+  js_mock_repair_1=$'return [{\n  json: {\n    schema_version: "1.0",\n    activityPlan: {\n      nextWeek: {\n        phase: "Desarrollo",\n        objective: "Consolidar base aeróbica",\n        weekStart: "2025-10-13",\n        weekEnd: "2025-10-19"\n      },\n      days: [\n        { day: "Lunes", date: "2025-10-13", activity: "Easy run", distance_time: "40′", intensity: "Hard", goal: "Recuperación", note: "Movilidad + foam roller" },\n        { day: "Martes", date: "2025-10-14", activity: "Gimnasio", distance_time: "60′", intensity: "—", goal: "Fuerza (Pecho y brazos)" },\n        { day: "Miércoles", date: "2025-10-15", activity: "VO₂ máx", distance_time: "4×3′", intensity: "Z4–Z5 (168-188 bpm)", goal: "Potencia aeróbica" },\n        { day: "Jueves", date: "2025-10-16", activity: "Gimnasio", distance_time: "60′", intensity: "—", goal: "Fuerza (Espalda y hombros)" },\n        { day: "Viernes", date: "2025-10-17", activity: "Tempo / Umbral", distance_time: "30′", intensity: "Z3–Z4 (155-174 bpm)", goal: "Tolerancia lactato" },\n        { day: "Sábado", date: "2025-10-18", activity: "Gimnasio", distance_time: "60′", intensity: "—", goal: "Fuerza (Piernas)" },\n        { day: "Domingo", date: "2025-10-19", activity: "Long run", distance_time: "75′", intensity: "Z2 (118-138 bpm)", goal: "Base aeróbica progresiva", note: "Últimos 10′ a Z3" }\n      ]\n    },\n    justification: [\n      "Carga coherente con ATL y HRV recientes",\n      "VO₂ y tempo separados por ≥48h",\n      "Long run progresivo para consolidar CTL"\n    ]\n  }\n}];'
+
+  js_mock_repair_2=$'return [{\n  json: {\n    schema_version: "1.0",\n    activityPlan: {\n      nextWeek: {\n        phase: "Desarrollo",\n        objective: "Consolidar base aeróbica",\n        weekStart: "2025-10-13",\n        weekEnd: "2025-10-19"\n      },\n      days: [\n        { day: "Lunes", date: "2025-10-13", activity: "Easy run", distance_time: "40′", intensity: "Z2 (118-138 bpm)", goal: "Recuperación", note: "Movilidad + foam roller" },\n        { day: "Martes", date: "2025-10-14", activity: "Gimnasio", distance_time: "60′", intensity: "—", goal: "Fuerza (Pecho y brazos)" },\n        { day: "Miércoles", date: "2025-10-15", activity: "VO₂ máx", distance_time: "4×3′", intensity: "Z4–Z5 (168-188 bpm)", goal: "Potencia aeróbica" },\n        { day: "Jueves", date: "2025-10-16", activity: "Gimnasio", distance_time: "60′", intensity: "—", goal: "Fuerza (Espalda y hombros)" },\n        { day: "Viernes", date: "2025-10-17", activity: "Tempo / Umbral", distance_time: "30′", intensity: "Z3–Z4 (155-174 bpm)", goal: "Tolerancia lactato" },\n        { day: "Sábado", date: "2025-10-18", activity: "Gimnasio", distance_time: "60′", intensity: "—", goal: "Fuerza (Piernas)" },\n        { day: "Domingo", date: "2025-10-19", activity: "Long run", distance_time: "75′", intensity: "Z2 (118-138 bpm)", goal: "Base aeróbica progresiva", note: "Últimos 10′ a Z3" }\n      ]\n    },\n    justification: [\n      "Carga coherente con ATL y HRV recientes",\n      "VO₂ y tempo separados por ≥48h",\n      "Long run progresivo para consolidar CTL"\n    ]\n  }\n}];'
 
   js_mock_telegram=$'return [{\n  json: {\n    ok: true,\n    result: {\n      message_id: 12345,\n      chat: { id: 987654, username: "itest" },\n      date: Math.floor(Date.now() / 1000),\n      text: "Test Telegram message"\n    }\n  }\n}];'
 
-  jq --arg js_llm "$js_mock_llm" --arg js_telegram "$js_mock_telegram" --arg mockUrl "http://mock:1080" '
+  jq --arg js_llm "$js_mock_llm" --arg js_repair_1 "$js_mock_repair_1" --arg js_repair_2 "$js_mock_repair_2" --arg js_telegram "$js_mock_telegram" --arg mockUrl "http://mock:1080" '
     .nodes |= map(
       if .name == "GET Activities" then
         .parameters.url = $mockUrl + "/api/v1/athlete/i372001/activities"
@@ -133,6 +137,16 @@ patch_workflow() {
         .type = "n8n-nodes-base.code"
         | .typeVersion = 2
         | .parameters = {jsCode: $js_llm}
+        | del(.credentials)
+      elif .name == "Repair Plan 1" then
+        .type = "n8n-nodes-base.code"
+        | .typeVersion = 2
+        | .parameters = {jsCode: $js_repair_1}
+        | del(.credentials)
+      elif .name == "Repair Plan 2" then
+        .type = "n8n-nodes-base.code"
+        | .typeVersion = 2
+        | .parameters = {jsCode: $js_repair_2}
         | del(.credentials)
       elif .name == "Send a text message" then
         .type = "n8n-nodes-base.code"
@@ -197,6 +211,12 @@ PY)"
   executed_names="$(jq -r '.executed[]' <<<"$coverage_json" | sort -u)"
   local skip_names
   skip_names="$(jq -r '.nodes[] | select(.type == "n8n-nodes-base.scheduleTrigger") | .name' "$WORKFLOW_FILE")"
+  skip_names="$(
+    printf "%s\n%s\n" \
+      "$skip_names" \
+      "$(jq -r '.nodes[] | select(.name == "Fallback Trigger") | .name' "$WORKFLOW_FILE")" \
+    | sed '/^$/d'
+  )"
 
   while IFS= read -r node_name; do
     printf "   • %-30s" "$node_name"
