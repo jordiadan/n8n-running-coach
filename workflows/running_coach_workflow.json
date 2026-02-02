@@ -432,7 +432,7 @@
         "conditions": {
           "boolean": [
             {
-              "value1": "={{ $json.__valid }}",
+              "value1": "={{ $json.__valid === true }}",
               "operation": "isTrue"
             }
           ]
@@ -519,7 +519,7 @@
         "conditions": {
           "boolean": [
             {
-              "value1": "={{ $json.__valid }}",
+              "value1": "={{ $json.__valid === true }}",
               "operation": "isTrue"
             }
           ]
@@ -606,7 +606,7 @@
         "conditions": {
           "boolean": [
             {
-              "value1": "={{ $json.__valid }}",
+              "value1": "={{ $json.__valid === true }}",
               "operation": "isTrue"
             }
           ]
