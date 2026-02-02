@@ -66,6 +66,14 @@ Main workflow file: `workflows/running_coach_workflow.json`
 - `.github/workflows/ci.yml`: integration tests on PR/push.
 - `.github/workflows/deploy-fly.yml`: deploy after successful CI on `main`.
 
+## Workflow Versioning and Deployment
+
+- `workflows/running_coach_workflow.json` is the single source of truth for the workflow.
+- Do not edit the workflow directly in the n8n UI except for emergency hotfixes.
+- All workflow changes must go through PRs and update the JSON file.
+- Deployments must import the JSON into n8n so production matches the repo version.
+- If running locally, import the JSON manually in the n8n UI.
+
 ## Scheduling
 
 The workflow includes a cron schedule expression:
