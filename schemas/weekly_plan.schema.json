@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/weekly_plan.schema.json",
+  "title": "WeeklyPlan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "activityPlan",
+    "justification"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Schema version for WeeklyPlan payloads."
+    },
+    "activityPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nextWeek",
+        "days"
+      ],
+      "properties": {
+        "nextWeek": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "phase",
+            "objective",
+            "weekStart",
+            "weekEnd"
+          ],
+          "properties": {
+            "phase": {
+              "type": "string",
+              "minLength": 1
+            },
+            "objective": {
+              "type": "string",
+              "minLength": 1
+            },
+            "weekStart": {
+              "type": "string",
+              "format": "date"
+            },
+            "weekEnd": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        },
+        "days": {
+          "type": "array",
+          "minItems": 7,
+          "maxItems": 7,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "day",
+              "date",
+              "activity",
+              "distance_time",
+              "intensity",
+              "goal"
+            ],
+            "properties": {
+              "day": {
+                "type": "string",
+                "pattern": "^(Lunes|Martes|Miercoles|Mi\\u00e9rcoles|Jueves|Viernes|Sabado|S\\u00e1bado|Domingo)$"
+              },
+              "date": {
+                "type": "string",
+                "format": "date"
+              },
+              "activity": {
+                "type": "string",
+                "minLength": 1
+              },
+              "distance_time": {
+                "type": "string",
+                "minLength": 1
+              },
+              "intensity": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "(Z[1-5]|interval|Interval|VO2|Tempo|tempo|Umbral|umbral|Threshold|threshold|Easy|easy|Recovery|recovery|\\u2014|--|-)"
+              },
+              "goal": {
+                "type": "string",
+                "minLength": 1
+              },
+              "note": {
+                "type": "string"
+              },
+              "warning": {
+                "type": "string"
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "string"
+        },
+        "extensions": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "justification": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

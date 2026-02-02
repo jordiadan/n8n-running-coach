@@ -1,0 +1,76 @@
+{
+  "schema_version": "1.0",
+  "activityPlan": {
+    "nextWeek": {
+      "phase": "Desarrollo",
+      "objective": "Build tempo strength",
+      "weekStart": "2026-02-10",
+      "weekEnd": "2026-02-16"
+    },
+    "days": [
+      {
+        "day": "Lunes",
+        "date": "2026-02-10",
+        "activity": "Recovery run",
+        "distance_time": "30min",
+        "intensity": "Z1",
+        "goal": "Easy recovery"
+      },
+      {
+        "day": "Martes",
+        "date": "2026-02-11",
+        "activity": "Gym - Upper body",
+        "distance_time": "60min",
+        "intensity": "--",
+        "goal": "Strength"
+      },
+      {
+        "day": "Miercoles",
+        "date": "2026-02-12",
+        "activity": "Tempo intervals",
+        "distance_time": "3x10min",
+        "intensity": "Tempo Z3",
+        "goal": "Lactate tolerance"
+      },
+      {
+        "day": "Jueves",
+        "date": "2026-02-13",
+        "activity": "Gym - Back/Shoulders",
+        "distance_time": "60min",
+        "intensity": "--",
+        "goal": "Strength"
+      },
+      {
+        "day": "Viernes",
+        "date": "2026-02-14",
+        "activity": "Easy run",
+        "distance_time": "40min",
+        "intensity": "Z2",
+        "goal": "Aerobic base"
+      },
+      {
+        "day": "Sabado",
+        "date": "2026-02-15",
+        "activity": "Gym - Legs",
+        "distance_time": "60min",
+        "intensity": "--",
+        "goal": "Strength"
+      },
+      {
+        "day": "Domingo",
+        "date": "2026-02-16",
+        "activity": "Long run",
+        "distance_time": "80min",
+        "intensity": "Z2",
+        "goal": "Endurance"
+      }
+    ],
+    "warnings": [
+      "Hydrate well before long run."
+    ]
+  },
+  "justification": [
+    "Tempo work aligned with current phase.",
+    "Recovery days balance the load."
+  ]
+}

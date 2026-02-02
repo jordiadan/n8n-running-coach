@@ -1,0 +1,71 @@
+{
+  "activityPlan": {
+    "nextWeek": {
+      "phase": "Base",
+      "objective": "Build aerobic base",
+      "weekStart": "2026-02-03",
+      "weekEnd": "2026-02-09"
+    },
+    "days": [
+      {
+        "day": "Lunes",
+        "date": "2026-02-03",
+        "activity": "Easy run",
+        "distance_time": "40min",
+        "intensity": "Z2",
+        "goal": "Recovery"
+      },
+      {
+        "day": "Martes",
+        "date": "2026-02-04",
+        "activity": "Gym - Upper body",
+        "distance_time": "60min",
+        "intensity": "--",
+        "goal": "Strength"
+      },
+      {
+        "day": "Miercoles",
+        "date": "2026-02-05",
+        "activity": "Intervals",
+        "distance_time": "4x3min",
+        "intensity": "Z5 interval",
+        "goal": "Aerobic power"
+      },
+      {
+        "day": "Jueves",
+        "date": "2026-02-06",
+        "activity": "Gym - Back/Shoulders",
+        "distance_time": "60min",
+        "intensity": "--",
+        "goal": "Strength"
+      },
+      {
+        "day": "Viernes",
+        "date": "2026-02-07",
+        "activity": "Tempo",
+        "distance_time": "30min",
+        "intensity": "Z3",
+        "goal": "Threshold tolerance"
+      },
+      {
+        "day": "Sabado",
+        "date": "2026-02-08",
+        "activity": "Gym - Legs",
+        "distance_time": "60min",
+        "intensity": "--",
+        "goal": "Strength"
+      },
+      {
+        "day": "Domingo",
+        "date": "2026-02-09",
+        "activity": "Long run",
+        "distance_time": "75min",
+        "intensity": "Z2",
+        "goal": "Aerobic endurance"
+      }
+    ]
+  },
+  "justification": [
+    "Missing schema_version should fail."
+  ]
+}
