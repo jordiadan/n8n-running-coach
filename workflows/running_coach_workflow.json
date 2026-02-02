@@ -873,14 +873,14 @@
       "main": [
         [
           {
-            "node": "Build Repair Prompt (attempt 1)",
+            "node": "Build Telegram Message",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Build Telegram Message",
+            "node": "Build Repair Prompt (attempt 1)",
             "type": "main",
             "index": 0
           }
@@ -924,14 +924,14 @@
       "main": [
         [
           {
-            "node": "Build Repair Prompt (attempt 2)",
+            "node": "Build Telegram Message",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Build Telegram Message",
+            "node": "Build Repair Prompt (attempt 2)",
             "type": "main",
             "index": 0
           }
@@ -975,14 +975,14 @@
       "main": [
         [
           {
-            "node": "Fallback Trigger",
+            "node": "Build Telegram Message",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Build Telegram Message",
+            "node": "Fallback Trigger",
             "type": "main",
             "index": 0
           }

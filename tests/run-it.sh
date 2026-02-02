@@ -138,12 +138,6 @@ patch_workflow() {
         | .typeVersion = 2
         | .parameters = {jsCode: $js_llm}
         | del(.credentials)
-      elif .name == "Is WeeklyPlan valid? (attempt 0)" then
-        .parameters.conditions.boolean[0].value1 = "={{ false }}"
-      elif .name == "Is WeeklyPlan valid? (attempt 1)" then
-        .parameters.conditions.boolean[0].value1 = "={{ false }}"
-      elif .name == "Is WeeklyPlan valid? (attempt 2)" then
-        .parameters.conditions.boolean[0].value1 = "={{ true }}"
       elif .name == "Repair Plan 1" then
         .type = "n8n-nodes-base.code"
         | .typeVersion = 2
