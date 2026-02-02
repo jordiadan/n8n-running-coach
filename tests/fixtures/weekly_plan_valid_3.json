@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0",
+  "activityPlan": {
+    "nextWeek": {
+      "phase": "Especifica",
+      "objective": "Race-specific endurance",
+      "weekStart": "2026-02-17",
+      "weekEnd": "2026-02-23"
+    },
+    "days": [
+      {
+        "day": "Lunes",
+        "date": "2026-02-17",
+        "activity": "Easy run",
+        "distance_time": "35min",
+        "intensity": "Z2",
+        "goal": "Recovery"
+      },
+      {
+        "day": "Martes",
+        "date": "2026-02-18",
+        "activity": "Gym - Upper body",
+        "distance_time": "60min",
+        "intensity": "--",
+        "goal": "Strength"
+      },
+      {
+        "day": "Miercoles",
+        "date": "2026-02-19",
+        "activity": "Intervals",
+        "distance_time": "6x2min",
+        "intensity": "Z4 interval",
+        "goal": "Speed"
+      },
+      {
+        "day": "Jueves",
+        "date": "2026-02-20",
+        "activity": "Gym - Back/Shoulders",
+        "distance_time": "60min",
+        "intensity": "--",
+        "goal": "Strength"
+      },
+      {
+        "day": "Viernes",
+        "date": "2026-02-21",
+        "activity": "Easy run",
+        "distance_time": "40min",
+        "intensity": "Z2",
+        "goal": "Aerobic base"
+      },
+      {
+        "day": "Sabado",
+        "date": "2026-02-22",
+        "activity": "Gym - Legs",
+        "distance_time": "60min",
+        "intensity": "--",
+        "goal": "Strength"
+      },
+      {
+        "day": "Domingo",
+        "date": "2026-02-23",
+        "activity": "Long run",
+        "distance_time": "90min",
+        "intensity": "Z2",
+        "goal": "Endurance",
+        "warnings": [
+          "Avoid hills if legs feel heavy."
+        ]
+      }
+    ],
+    "extensions": {
+      "coach_note": "Keep cadence smooth on intervals."
+    }
+  },
+  "justification": [
+    "Specific endurance focus for race phase.",
+    "Strength work supports injury prevention."
+  ],
+  "extensions": {
+    "source": "fixture"
+  }
+}

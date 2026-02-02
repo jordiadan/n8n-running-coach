@@ -57,6 +57,9 @@ Main workflow file: `workflows/running_coach_workflow.json`
 - `tests/run-it.sh`: full integration test runner.
 - `tests/mockserver-expectations.json`: mocked API payloads for tests.
 - `tests/credentials/mongo.json`: n8n credential fixture for Mongo tests.
+- `schemas/weekly_plan.schema.json`: JSON Schema for weekly plan output.
+- `docs/weekly_plan_schema.md`: Schema documentation and usage.
+- `tests/fixtures/weekly_plan_*.json`: schema validation fixtures.
 - `docker-compose.itest.yml`: test stack (n8n + mongo + mockserver).
 - `Dockerfile`: n8n image definition.
 - `fly.toml`: Fly.io app config.
@@ -101,6 +104,15 @@ What the integration test does:
 - Executes it via n8n CLI.
 - Verifies that all workflow nodes are executed at least once
   (except schedule trigger, which is intentionally skipped).
+
+## Schema Validation
+
+Run:
+
+```bash
+python3 -m pip install -r requirements-dev.txt
+python3 tests/schema_test.py
+```
 
 ## CI/CD
 
