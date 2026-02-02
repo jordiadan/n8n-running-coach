@@ -9,6 +9,17 @@ Jira board:
 
 The authoritative Jira workspace for this repo is `Running Coach` (project `RC`, board `34`). Do not use any other Jira board for active work on this repository.
 
+Language policy:
+- All Jira issues/tickets must be written in English (titles, descriptions, comments).
+- All GitHub content must be written in English (PRs, commit messages, docs, code comments).
+- This rule applies even if a collaborator communicates in another language.
+
+Workflow source of truth and deployment:
+- `workflows/running_coach_workflow.json` is the single source of truth for the n8n workflow.
+- Do not edit the workflow directly in the n8n UI except for emergency hotfixes.
+- Any workflow change must be made in the JSON file and go through a PR.
+- Deployment must import the JSON into n8n so production matches the repo version.
+
 ## 1) One Jira ticket = one branch
 
 - Always start from an up-to-date `main`.
