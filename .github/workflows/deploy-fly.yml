@@ -82,7 +82,7 @@ jobs:
           set -euo pipefail
           echo "Importing workflow into n8n (app: $APP)"
           for attempt in {1..10}; do
-            if flyctl ssh console --app "$APP" --user node -C "env N8N_USER_FOLDER=/home/node/.n8n HOME=/home/node n8n import:workflow --input /opt/workflows/running_coach_workflow.json"; then
+            if flyctl ssh console --app "$APP" --user node -C "env N8N_USER_FOLDER=/home/node/.n8n HOME=/home/node n8n import:workflow --input /opt/workflows/running_coach_workflow.json --overwrite"; then
               echo "✅ Workflow import succeeded"
               exit 0
             fi
