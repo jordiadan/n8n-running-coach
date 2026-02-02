@@ -1,5 +1,6 @@
 FROM n8nio/n8n:1.122.4
 WORKDIR /home/node/.n8n
+COPY workflows/running_coach_workflow.json /opt/workflows/running_coach_workflow.json
 ENV DB_TYPE=postgres
 ENV GENERIC_TIMEZONE=Europe/Madrid
 ENV N8N_BASIC_AUTH_ACTIVE=true
