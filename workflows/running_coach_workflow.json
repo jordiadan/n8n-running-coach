@@ -10,7 +10,7 @@
         448
       ],
       "id": "8181fc0a-148a-4556-9619-997e448253f7",
-      "name": "When clicking ‘Execute workflow’"
+      "name": "When clicking \u2018Execute workflow\u2019"
     },
     {
       "parameters": {
@@ -40,7 +40,7 @@
     },
     {
       "parameters": {
-        "jsCode": "return items.map(item => {\n  const w = item.json;\n  return {\n    json: {\n      id:         w.id,                            // e.g. \"2025-07-10\"\n      athleteId:  w.icu_athlete_id,                // your athlete key\n      date:       new Date(w.updated),                       // ISO timestamp of the record\n      ctl:        w.ctl,                           // chronic training load\n      atl:        w.atl,                           // acute training load\n      rampRate:   w.rampRate ?? (w.ctl - w.atl),   // change in load\n      ctlLoad:    w.ctlLoad,                       // daily CTL “load”\n      atlLoad:    w.atlLoad,                       // daily ATL “load”\n      restingHR:  w.restingHR,                     // recovery HR\n      hrv:        w.hrv,                           // HRV\n      sleepScore: w.sleepScore,                    // sleep quality\n      steps:      w.steps,                         // daily step count\n      weight:     w.weight                         // body weight (if available)\n    }\n  };\n});\n"
+        "jsCode": "return items.map(item => {\n  const w = item.json;\n  return {\n    json: {\n      id:         w.id,                            // e.g. \"2025-07-10\"\n      athleteId:  w.icu_athlete_id,                // your athlete key\n      date:       new Date(w.updated),                       // ISO timestamp of the record\n      ctl:        w.ctl,                           // chronic training load\n      atl:        w.atl,                           // acute training load\n      rampRate:   w.rampRate ?? (w.ctl - w.atl),   // change in load\n      ctlLoad:    w.ctlLoad,                       // daily CTL \u201cload\u201d\n      atlLoad:    w.atlLoad,                       // daily ATL \u201cload\u201d\n      restingHR:  w.restingHR,                     // recovery HR\n      hrv:        w.hrv,                           // HRV\n      sleepScore: w.sleepScore,                    // sleep quality\n      steps:      w.steps,                         // daily step count\n      weight:     w.weight                         // body weight (if available)\n    }\n  };\n});\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -186,7 +186,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Function node: Compute weekly_metrics for the CURRENT week (Monday–Sunday)\n// Input: one item whose JSON has { activities: [...], wellness: [...] }\n\nconst { activities: acts, wellness: well } = items[0].json;\n\n// 1️⃣ Compute current week boundaries (Monday 00:00 to Sunday 23:59:59)\nconst today = new Date();\nconst day = today.getDay();               // 0=Sun, 1=Mon, … 6=Sat\nconst diffToMonday = (day + 6) % 7;\nconst monday = new Date(today);\nmonday.setDate(today.getDate() - diffToMonday);\nmonday.setHours(0,0,0,0);\nconst sunday = new Date(monday);\nsunday.setDate(monday.getDate() + 6);\nsunday.setHours(23,59,59,999);\n\n// 2️⃣ Helper: average over non-null\nconst avg = arr => arr.length\n  ? arr.reduce((sum, v) => sum + v, 0) / arr.length\n  : 0;\n\n// 3️⃣ Filter this week’s activities\nconst inWeek = a => {\n  const d = new Date(a.start_date);\n  return d >= monday && d <= sunday;\n};\nconst weekActs = acts.filter(inWeek);\n\n// 4️⃣ Run, ride & strength metrics\nconst runActs      = weekActs.filter(a => a.type === 'Run');\nconst rideActs     = weekActs.filter(a => /Ride/.test(a.type));\nconst strengthActs = weekActs.filter(a => a.type === 'WeightTraining');\n\nconst runCount     = runActs.length;\nconst runDistance  = runActs.reduce((s,a) => s + (a.distance||0), 0);\nconst runTime      = runActs.reduce((s,a) => s + (a.elapsed_time||0), 0);\n\nconst rideCount    = rideActs.length;\nconst rideDistance = rideActs.reduce((s,a) => s + (a.distance||0), 0);\nconst rideTime     = rideActs.reduce((s,a) => s + (a.elapsed_time||0), 0);\nconst rideTrimp    = rideActs.reduce((s,a) => s + (a.trimp||0), 0);\n\nconst strengthCount = strengthActs.length;\nconst strengthTrimp = strengthActs.reduce((s,a) => s + (a.trimp||0), 0);\n\n// 5️⃣ Session‐type counts by keyword in activity name\nconst vo2Sessions   = runActs.filter(a => /vo2/i.test(a.name)).length;\nconst tempoSessions = runActs.filter(a => /tempo|threshold|umbral/i.test(a.name)).length;\nconst longRuns      = runActs.filter(a => /long/i.test(a.name)).length;\n\n// 6️⃣ Wellness this week (filter by id = YYYY-MM-DD)\nconst wellWeek = well.filter(w => {\n  const d = new Date(w.id);\n  return d >= monday && d <= sunday;\n});\n\nconst ctlMean        = avg(wellWeek.map(w=>w.ctl||0));\nconst atlMean        = avg(wellWeek.map(w=>w.atl||0));\nconst rampRateMean   = avg(wellWeek.map(w=>w.rampRate||0));\nconst restHrMean     = avg(wellWeek.map(w=>w.restingHR||0));\nconst stepsMean      = avg(wellWeek.map(w=>w.steps||0));\nconst sleepScoreMean = avg(wellWeek.map(w=>w.sleepScore||0));\nconst hrvMean        = avg(wellWeek.map(w=>w.hrv||0));\n\n// 7️⃣ Identify athleteId (from any activity)\nconst athleteId = acts.length\n  ? acts[0].icu_athlete_id\n  : null;\n\n// 8️⃣ Build weekly_metrics record\nconst weekStart = monday.toISOString().slice(0,10);\nconst weekEnd   = sunday.toISOString().slice(0,10);\nconst now       = new Date().toISOString();\n\nreturn [{\n  json: {\n    athleteId,\n    weekStart,\n    weekEnd,\n\n    runCount,\n    runDistance,\n    runTime,\n\n    rideCount,\n    rideDistance,\n    rideTime,\n    rideTrimp,\n\n    vo2Sessions,\n    tempoSessions,\n    longRuns,\n\n    strengthCount,\n    strengthTrimp,\n\n    ctlMean,\n    atlMean,\n    rampRateMean,\n\n    restHrMean,\n    stepsMean,\n    sleepScoreMean,\n    hrvMean,\n\n    createdAt: now,\n    updatedAt: now\n  }\n}];\n"
+        "jsCode": "// Function node: Compute weekly_metrics for the CURRENT week (Monday\u2013Sunday)\n// Input: one item whose JSON has { activities: [...], wellness: [...] }\n\nconst { activities: acts, wellness: well } = items[0].json;\n\n// 1\ufe0f\u20e3 Compute current week boundaries (Monday 00:00 to Sunday 23:59:59)\nconst today = new Date();\nconst day = today.getDay();               // 0=Sun, 1=Mon, \u2026 6=Sat\nconst diffToMonday = (day + 6) % 7;\nconst monday = new Date(today);\nmonday.setDate(today.getDate() - diffToMonday);\nmonday.setHours(0,0,0,0);\nconst sunday = new Date(monday);\nsunday.setDate(monday.getDate() + 6);\nsunday.setHours(23,59,59,999);\n\n// 2\ufe0f\u20e3 Helper: average over non-null\nconst avg = arr => arr.length\n  ? arr.reduce((sum, v) => sum + v, 0) / arr.length\n  : 0;\n\n// 3\ufe0f\u20e3 Filter this week\u2019s activities\nconst inWeek = a => {\n  const d = new Date(a.start_date);\n  return d >= monday && d <= sunday;\n};\nconst weekActs = acts.filter(inWeek);\n\n// 4\ufe0f\u20e3 Run, ride & strength metrics\nconst runActs      = weekActs.filter(a => a.type === 'Run');\nconst rideActs     = weekActs.filter(a => /Ride/.test(a.type));\nconst strengthActs = weekActs.filter(a => a.type === 'WeightTraining');\n\nconst runCount     = runActs.length;\nconst runDistance  = runActs.reduce((s,a) => s + (a.distance||0), 0);\nconst runTime      = runActs.reduce((s,a) => s + (a.elapsed_time||0), 0);\n\nconst rideCount    = rideActs.length;\nconst rideDistance = rideActs.reduce((s,a) => s + (a.distance||0), 0);\nconst rideTime     = rideActs.reduce((s,a) => s + (a.elapsed_time||0), 0);\nconst rideTrimp    = rideActs.reduce((s,a) => s + (a.trimp||0), 0);\n\nconst strengthCount = strengthActs.length;\nconst strengthTrimp = strengthActs.reduce((s,a) => s + (a.trimp||0), 0);\n\n// 5\ufe0f\u20e3 Session\u2010type counts by keyword in activity name\nconst vo2Sessions   = runActs.filter(a => /vo2/i.test(a.name)).length;\nconst tempoSessions = runActs.filter(a => /tempo|threshold|umbral/i.test(a.name)).length;\nconst longRuns      = runActs.filter(a => /long/i.test(a.name)).length;\n\n// 6\ufe0f\u20e3 Wellness this week (filter by id = YYYY-MM-DD)\nconst wellWeek = well.filter(w => {\n  const d = new Date(w.id);\n  return d >= monday && d <= sunday;\n});\n\nconst ctlMean        = avg(wellWeek.map(w=>w.ctl||0));\nconst atlMean        = avg(wellWeek.map(w=>w.atl||0));\nconst rampRateMean   = avg(wellWeek.map(w=>w.rampRate||0));\nconst restHrMean     = avg(wellWeek.map(w=>w.restingHR||0));\nconst stepsMean      = avg(wellWeek.map(w=>w.steps||0));\nconst sleepScoreMean = avg(wellWeek.map(w=>w.sleepScore||0));\nconst hrvMean        = avg(wellWeek.map(w=>w.hrv||0));\n\n// 7\ufe0f\u20e3 Identify athleteId (from any activity)\nconst athleteId = acts.length\n  ? acts[0].icu_athlete_id\n  : null;\n\n// 8\ufe0f\u20e3 Build weekly_metrics record\nconst weekStart = monday.toISOString().slice(0,10);\nconst weekEnd   = sunday.toISOString().slice(0,10);\nconst now       = new Date().toISOString();\n\nreturn [{\n  json: {\n    athleteId,\n    weekStart,\n    weekEnd,\n\n    runCount,\n    runDistance,\n    runTime,\n\n    rideCount,\n    rideDistance,\n    rideTime,\n    rideTrimp,\n\n    vo2Sessions,\n    tempoSessions,\n    longRuns,\n\n    strengthCount,\n    strengthTrimp,\n\n    ctlMean,\n    atlMean,\n    rampRateMean,\n\n    restHrMean,\n    stepsMean,\n    sleepScoreMean,\n    hrvMean,\n\n    createdAt: now,\n    updatedAt: now\n  }\n}];\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -261,7 +261,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// El primer ítem es el current\nconst current = items[0].json;\n\n// Los siguientes ítems son tu histórico\nconst pastWeeks = items.slice(1).map(i => i.json);\n\nreturn [{\n  json: {\n    current,       // todas las métricas y el prompt de esta semana\n    history: pastWeeks  // tu histórico ya preparado\n  }\n}];\n"
+        "jsCode": "// El primer \u00edtem es el current\nconst current = items[0].json;\n\n// Los siguientes \u00edtems son tu hist\u00f3rico\nconst pastWeeks = items.slice(1).map(i => i.json);\n\nreturn [{\n  json: {\n    current,       // todas las m\u00e9tricas y el prompt de esta semana\n    history: pastWeeks  // tu hist\u00f3rico ya preparado\n  }\n}];\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -298,7 +298,7 @@
     },
     {
       "parameters": {
-        "jsCode": "/**\n * Prompt Builder para generar el JSON limpio que le enviaremos a OpenAI\n * Incluye semana, fechas y solicita al modelo los campos necesarios.\n */\n\n// —————————————— CONFIGURACIÓN ——————————————\n\n// Fecha de inicio de tu plan (puedes ajustarla)\nconst programStartDate = new Date('2025-07-19');\n\n// Fecha de la competición\nconst raceDate = new Date('2026-02-15');\n\n// ——————————— CÁLCULOS DE FECHAS ———————————\n\nconst today = new Date();\nconst msPerWeek = 7 * 24 * 60 * 60 * 1000;\nconst weeksSinceStart = Math.floor((today - programStartDate) / msPerWeek) + 1;\nconst weeksToRace = Math.ceil((raceDate - today) / msPerWeek);\nconst totalPlanWeeks = weeksSinceStart + weeksToRace;\n\n// —————————— DETERMINACIÓN DE FASE ——————————\n\nlet phaseName, phaseNote;\nif (weeksSinceStart <= Math.floor(totalPlanWeeks * 0.3)) {\n  phaseName = 'Base';\n  phaseNote = 'Rodajes suaves y fuerza general.';\n} else if (weeksSinceStart <= Math.floor(totalPlanWeeks * 0.7)) {\n  phaseName = 'Desarrollo';\n  phaseNote = 'Interválicos, tempo runs y fuerza específica.';\n} else if (weeksToRace > 2) {\n  phaseName = 'Específica';\n  phaseNote = 'Ritmo objetivo, simulaciones de competición.';\n} else {\n  phaseName = 'Taper';\n  phaseNote = 'Reducción de carga manteniendo chispa.';\n}\n\n// —————————— DESCOMPOSICIÓN DE DATOS ——————————\n\nconst { current, history: rawHistory } = items[0].json;\nconst history = Array.isArray(rawHistory)\n  ? rawHistory\n      .sort((a, b) => b.weekStart.localeCompare(a.weekStart))\n      .slice(0, 4)\n  : [];\n\nconst { activities, wellness } = items[1].json;\n\n// —————————— EXTRACCIÓN DE FCMAX ——————————\n\nconst DEFAULT_FCMAX = 202;\nconst recordedMaxHR = Math.max(\n  ...activities.map(a => a.max_heartrate || 0).filter(hr => hr > 0)\n);\nconst fcMax = recordedMaxHR >= 190 ? recordedMaxHR : DEFAULT_FCMAX;\n\n// —————————— HELPERS ——————————\n\nconst avg = arr => arr.length ? arr.reduce((sum, v) => sum + v, 0) / arr.length : 0;\nconst fmt = x   => x != null ? x.toFixed(1) : '—';\n\n// —————————— MÉTRICAS SEMANA ACTUAL ——————————\n\nconst { weekStart, weekEnd } = current;\nconst ctlActs    = avg( activities.map(a => a.icu_ctl      || 0) );\nconst atlActs    = avg( activities.map(a => a.icu_atl      || 0) );\nconst rampActs   = avg( activities.map(a => a.icu_rampRate || 0) );\nconst totalTrimp = activities.reduce((s,a) => s + (a.trimp || 0), 0);\n\nconst restVals = [...activities, ...wellness]\n  .map(o => o.restingHR).filter(v => v != null);\nconst stepVals = [...activities, ...wellness]\n  .map(o => o.steps).filter(v => v != null);\n\nconst restHR   = avg(restVals);\nconst steps    = avg(stepVals);\nconst hrvWel   = avg( wellness.map(w => w.hrv        || 0) );\nconst sleepWel = avg( wellness.map(w => w.sleepScore || 0) );\n\n// —————————— CONSTRUCCIÓN DEL PROMPT (FORZAR JSON PURA) ——————————\n\nconst prompt = `\nEres mi coach experto en medio maratón (método noruego, híbrido fuerza+carrera).\n\nContexto:\n- Mitja Marató Barcelona (15‑02‑2026), objetivo 1h45m (~4:59/km).\n- Empezamos el plan el ${programStartDate.toISOString().slice(0,10)}, esta es la semana **${weeksSinceStart}** de un plan de **${totalPlanWeeks}** semanas.\n- Quedan **${weeksToRace}** semanas → Fase **${phaseName}**: ${phaseNote}\n\nResumen ${weekStart} → ${weekEnd}:\n• CTL avg: ${fmt(ctlActs)}, ATL avg: ${fmt(atlActs)}, RampRate avg: ${fmt(rampActs)}\n• TRIMP total: ${fmt(totalTrimp)}\n• FC reposo medio: ${fmt(restHR)} bpm, Pasos/día medio: ${fmt(steps)}\n• HRV avg: ${fmt(hrvWel)}, SleepScore avg: ${fmt(sleepWel)}\n\nHistorial (4 semanas anteriores):\n${history.map(h =>\n  `- Semana ${h.weekStart}: ${fmt(h.runDistance/1000)} km · ATL ${fmt(h.atlMean)} · RampRate ${fmt(h.rampRateMean)} · RHR ${fmt(h.restHrMean)}`\n).join('\\n')}\n\nPor favor genera mi plan PARA LA PRÓXIMA SEMANA siguiendo el método noruego:\n- Indica fase del plan y el objetivo de la semana.\n- **Gimnasio**: Mar, Jue y Sáb (orden: Pecho y brazos, Espalda y hombros, Piernas).\n- **Running** según carga (CTL, ATL, TRIMP, HRV/Sueño):\n  1. Sesión VO₂ máx  \n  2. Sesión tempo/umbral  \n  3. Tirada larga aeróbica  \n  4. Easy/recovery  \n\n**IMPORTANTE**:  \n- Gimnasio a las 12–13h, calcula recuperación y planifica alrededor.  \n- Usa **zonas de FC Garmin (Z1–Z5)** basadas en FCmáx=${fcMax} bpm; indica % y rango de bpm.  \n- Si dispones de LTHR (183 bpm), úsalo para definir las zonas de umbral.\n\n\n\nSALIDA (OBLIGATORIA):\n\n- Devuelve exclusivamente un JSON válido y minificado en UNA sola línea (sin texto extra, sin bloques de código, sin comentarios).\n- Sustituye en todos los textos: &→&amp;, <→&lt;, >→&gt;.\n- La respuesta empieza con { y termina con }.\n- ≤ 3000 caracteres en total.\n\nEstructura EXACTA con 7 objetos en days (uno por cada día de la semana). Si no cabe, reduce primero note y luego justification.\n\n\\`\\`\\`json\n{\n  \"activityPlan\": {\n    \"nextWeek\": {\n      \"phase\": string,\n      \"objective\": string,\n      \"weekStart\": string,   // e.g. \"2025-07-14\"\n      \"weekEnd\":   string    // e.g. \"2025-07-20\"\n    },\n    \"days\": [\n      {\n        \"day\": string,         // Nombre en español, ej. \"Lunes\"\n        \"date\": string,        // Fecha concreta, ej. \"2025-07-14\"\n        \"activity\": string,\n        \"distance_time\": string,\n        \"intensity\": string,\n        \"goal\": string,\n        \"note\": string\n      }\n      // …un objeto por cada día de la semana\n    ]\n  },\n  \"justification\": [ string, … ]\n}\n\\`\\`\\`\n`.trim();\n\n// —————————— RETORNO ——————————\n\nreturn [{\n  json: {\n    prompt,\n    metrics: {\n      programStartDate: programStartDate.toISOString().slice(0,10),\n      weeksSinceStart,\n      totalPlanWeeks,\n      weeksToRace,\n      phaseName,\n      weekStart,\n      weekEnd,\n      ctlActs,\n      atlActs,\n      rampActs,\n      totalTrimp,\n      restHR,\n      steps,\n      hrvWel,\n      sleepWel,\n      fcMax\n    },\n    history,\n    activities,\n    wellness\n  }\n}];\n"
+        "jsCode": "/**\n * Prompt Builder para generar el JSON limpio que le enviaremos a OpenAI\n * Incluye semana, fechas y solicita al modelo los campos necesarios.\n */\n\n// \u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014 CONFIGURACI\u00d3N \u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\n\n// Fecha de inicio de tu plan (puedes ajustarla)\nconst programStartDate = new Date('2025-07-19');\n\n// Fecha de la competici\u00f3n\nconst raceDate = new Date('2026-02-15');\n\n// \u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014 C\u00c1LCULOS DE FECHAS \u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\n\nconst today = new Date();\nconst msPerWeek = 7 * 24 * 60 * 60 * 1000;\nconst weeksSinceStart = Math.floor((today - programStartDate) / msPerWeek) + 1;\nconst weeksToRace = Math.ceil((raceDate - today) / msPerWeek);\nconst totalPlanWeeks = weeksSinceStart + weeksToRace;\n\n// \u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014 DETERMINACI\u00d3N DE FASE \u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\n\nlet phaseName, phaseNote;\nif (weeksSinceStart <= Math.floor(totalPlanWeeks * 0.3)) {\n  phaseName = 'Base';\n  phaseNote = 'Rodajes suaves y fuerza general.';\n} else if (weeksSinceStart <= Math.floor(totalPlanWeeks * 0.7)) {\n  phaseName = 'Desarrollo';\n  phaseNote = 'Interv\u00e1licos, tempo runs y fuerza espec\u00edfica.';\n} else if (weeksToRace > 2) {\n  phaseName = 'Espec\u00edfica';\n  phaseNote = 'Ritmo objetivo, simulaciones de competici\u00f3n.';\n} else {\n  phaseName = 'Taper';\n  phaseNote = 'Reducci\u00f3n de carga manteniendo chispa.';\n}\n\n// \u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014 DESCOMPOSICI\u00d3N DE DATOS \u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\n\nconst { current, history: rawHistory } = items[0].json;\nconst history = Array.isArray(rawHistory)\n  ? rawHistory\n      .sort((a, b) => b.weekStart.localeCompare(a.weekStart))\n      .slice(0, 4)\n  : [];\n\nconst { activities, wellness } = items[1].json;\n\n// \u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014 EXTRACCI\u00d3N DE FCMAX \u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\n\nconst DEFAULT_FCMAX = 202;\nconst recordedMaxHR = Math.max(\n  ...activities.map(a => a.max_heartrate || 0).filter(hr => hr > 0)\n);\nconst fcMax = recordedMaxHR >= 190 ? recordedMaxHR : DEFAULT_FCMAX;\n\n// \u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014 HELPERS \u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\n\nconst avg = arr => arr.length ? arr.reduce((sum, v) => sum + v, 0) / arr.length : 0;\nconst fmt = x   => x != null ? x.toFixed(1) : '\u2014';\n\n// \u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014 M\u00c9TRICAS SEMANA ACTUAL \u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\n\nconst { weekStart, weekEnd } = current;\nconst ctlActs    = avg( activities.map(a => a.icu_ctl      || 0) );\nconst atlActs    = avg( activities.map(a => a.icu_atl      || 0) );\nconst rampActs   = avg( activities.map(a => a.icu_rampRate || 0) );\nconst totalTrimp = activities.reduce((s,a) => s + (a.trimp || 0), 0);\n\nconst restVals = [...activities, ...wellness]\n  .map(o => o.restingHR).filter(v => v != null);\nconst stepVals = [...activities, ...wellness]\n  .map(o => o.steps).filter(v => v != null);\n\nconst restHR   = avg(restVals);\nconst steps    = avg(stepVals);\nconst hrvWel   = avg( wellness.map(w => w.hrv        || 0) );\nconst sleepWel = avg( wellness.map(w => w.sleepScore || 0) );\n\n// \u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014 CONSTRUCCI\u00d3N DEL PROMPT (FORZAR JSON PURA) \u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\n\nconst prompt = `\nEres mi coach experto en medio marat\u00f3n (m\u00e9todo noruego, h\u00edbrido fuerza+carrera).\n\nContexto:\n- Mitja Marat\u00f3 Barcelona (15\u201102\u20112026), objetivo 1h45m (~4:59/km).\n- Empezamos el plan el ${programStartDate.toISOString().slice(0,10)}, esta es la semana **${weeksSinceStart}** de un plan de **${totalPlanWeeks}** semanas.\n- Quedan **${weeksToRace}** semanas \u2192 Fase **${phaseName}**: ${phaseNote}\n\nResumen ${weekStart} \u2192 ${weekEnd}:\n\u2022 CTL avg: ${fmt(ctlActs)}, ATL avg: ${fmt(atlActs)}, RampRate avg: ${fmt(rampActs)}\n\u2022 TRIMP total: ${fmt(totalTrimp)}\n\u2022 FC reposo medio: ${fmt(restHR)}\u202fbpm, Pasos/d\u00eda medio: ${fmt(steps)}\n\u2022 HRV avg: ${fmt(hrvWel)}, SleepScore avg: ${fmt(sleepWel)}\n\nHistorial (4 semanas anteriores):\n${history.map(h =>\n  `- Semana ${h.weekStart}: ${fmt(h.runDistance/1000)}\u202fkm \u00b7 ATL\u202f${fmt(h.atlMean)} \u00b7 RampRate\u202f${fmt(h.rampRateMean)} \u00b7 RHR\u202f${fmt(h.restHrMean)}`\n).join('\\n')}\n\nPor favor genera mi plan PARA LA PR\u00d3XIMA SEMANA siguiendo el m\u00e9todo noruego:\n- Indica fase del plan y el objetivo de la semana.\n- **Gimnasio**: Mar, Jue y S\u00e1b (orden: Pecho y brazos, Espalda y hombros, Piernas).\n- **Running** seg\u00fan carga (CTL, ATL, TRIMP, HRV/Sue\u00f1o):\n  1. Sesi\u00f3n VO\u2082\u202fm\u00e1x  \n  2. Sesi\u00f3n tempo/umbral  \n  3. Tirada larga aer\u00f3bica  \n  4. Easy/recovery  \n\n**IMPORTANTE**:  \n- Gimnasio a las 12\u201313h, calcula recuperaci\u00f3n y planifica alrededor.  \n- Usa **zonas de FC Garmin (Z1\u2013Z5)** basadas en FCm\u00e1x=${fcMax}\u202fbpm; indica % y rango de bpm.  \n- Si dispones de LTHR (183\u202fbpm), \u00fasalo para definir las zonas de umbral.\n\n\n\nSALIDA (OBLIGATORIA):\n\n- Devuelve exclusivamente un JSON v\u00e1lido y minificado en UNA sola l\u00ednea (sin texto extra, sin bloques de c\u00f3digo, sin comentarios).\n- Sustituye en todos los textos: &\u2192&amp;, <\u2192&lt;, >\u2192&gt;.\n- La respuesta empieza con { y termina con }.\n- \u2264 3000 caracteres en total.\n\nEstructura EXACTA con 7 objetos en days (uno por cada d\u00eda de la semana). Si no cabe, reduce primero note y luego justification.\n\n\\`\\`\\`json\n{\n  \"schema_version\": \"1.0\",\n  \"activityPlan\": {\n    \"nextWeek\": {\n      \"phase\": string,\n      \"objective\": string,\n      \"weekStart\": string,   // e.g. \"2025-07-14\"\n      \"weekEnd\":   string    // e.g. \"2025-07-20\"\n    },\n    \"days\": [\n      {\n        \"day\": string,         // Nombre en espa\u00f1ol, ej. \"Lunes\"\n        \"date\": string,        // Fecha concreta, ej. \"2025-07-14\"\n        \"activity\": string,\n        \"distance_time\": string,\n        \"intensity\": string,\n        \"goal\": string,\n        \"note\": string\n      }\n      // \u2026un objeto por cada d\u00eda de la semana\n    ]\n  },\n  \"justification\": [ string, \u2026 ]\n}\n\\`\\`\\`\n`.trim();\n\n// \u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014 RETORNO \u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\n\nreturn [{\n  json: {\n    prompt,\n    metrics: {\n      programStartDate: programStartDate.toISOString().slice(0,10),\n      weeksSinceStart,\n      totalPlanWeeks,\n      weeksToRace,\n      phaseName,\n      weekStart,\n      weekEnd,\n      ctlActs,\n      atlActs,\n      rampActs,\n      totalTrimp,\n      restHR,\n      steps,\n      hrvWel,\n      sleepWel,\n      fcMax\n    },\n    history,\n    activities,\n    wellness\n  }\n}];\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -324,7 +324,7 @@
               "role": "system"
             },
             {
-              "content": "={{\n  `Datos de la ÚLTIMA SEMANA:\\n` +\n  `Métricas: ${JSON.stringify($json.metrics, null, 2)}\\n\\n` +\n  `Historial (semanas anteriores): ${JSON.stringify($json.history, null, 2)}`\n}}"
+              "content": "={{\n  `Datos de la \u00daLTIMA SEMANA:\\n` +\n  `M\u00e9tricas: ${JSON.stringify($json.metrics, null, 2)}\\n\\n` +\n  `Historial (semanas anteriores): ${JSON.stringify($json.history, null, 2)}`\n}}"
             }
           ]
         },
@@ -375,7 +375,7 @@
     },
     {
       "parameters": {
-        "jsCode": "/**\n * Build Telegram Message: formatea el JSON de OpenAI añadiendo rango de fechas\n * y fecha concreta de cada día, sin depender de métricas externas.\n */\n\n // 1️⃣ Extraer el contenido generado por OpenAI\nconst content = Array.isArray(items[0].json.choices)\n  ? items[0].json.choices[0].message.content\n  : items[0].json;\n\nif (!content.activityPlan || !content.justification) {\n  throw new Error(\"No se encontró `activityPlan` o `justification` en la respuesta.\");\n}\n\nconst plan  = content.activityPlan;\nconst justs = content.justification;\n\n// 2️⃣ Cabecera: rango de la semana\nconst { weekStart, weekEnd, phase, objective } = plan.nextWeek;\n\n// 3️⃣ Construir el HTML\nlet html = `🏃‍♂️ <b>Plan semanal: ${weekStart} → ${weekEnd}</b>\\n`;\nhtml += `📂 <b>Fase:</b> ${phase}\\n`;\nhtml += `🎯 <b>Objetivo:</b> ${objective}\\n\\n`;\n\nfor (const d of plan.days) {\n  html += `📅 <b>${d.day} (${d.date}) – ${d.activity}</b>\\n`;\n  html += `📏 ${d.distance_time || '—'}\\n`;\n  html += `💓 ${d.intensity || '—'}\\n`;\n  html += `🎯 ${d.goal}\\n`;\n  if (d.note) html += `📝 <i>${d.note}</i>\\n`;\n  html += `\\n`;\n}\n\nhtml += `📚 <b>Justificación</b>\\n`;\njusts.forEach((j, i) => {\n  html += `${i + 1}. ${j}\\n`;\n});\n\n// 4️⃣ Salida para el nodo Telegram\nreturn [{\n  json: {\n    htmlMessage: html.trim()\n  }\n}];\n"
+        "jsCode": "/**\n * Build Telegram Message: formatea el JSON de OpenAI a\u00f1adiendo rango de fechas\n * y fecha concreta de cada d\u00eda, sin depender de m\u00e9tricas externas.\n */\n\n // 1\ufe0f\u20e3 Extraer el contenido generado por OpenAI\nconst content = Array.isArray(items[0].json.choices)\n  ? items[0].json.choices[0].message.content\n  : items[0].json;\n\nif (!content.activityPlan || !content.justification) {\n  throw new Error(\"No se encontr\u00f3 `activityPlan` o `justification` en la respuesta.\");\n}\n\nconst plan  = content.activityPlan;\nconst justs = content.justification;\n\n// 2\ufe0f\u20e3 Cabecera: rango de la semana\nconst { weekStart, weekEnd, phase, objective } = plan.nextWeek;\n\n// 3\ufe0f\u20e3 Construir el HTML\nlet html = `\ud83c\udfc3\u200d\u2642\ufe0f <b>Plan semanal: ${weekStart} \u2192 ${weekEnd}</b>\\n`;\nhtml += `\ud83d\udcc2 <b>Fase:</b> ${phase}\\n`;\nhtml += `\ud83c\udfaf <b>Objetivo:</b> ${objective}\\n\\n`;\n\nfor (const d of plan.days) {\n  html += `\ud83d\udcc5 <b>${d.day} (${d.date}) \u2013 ${d.activity}</b>\\n`;\n  html += `\ud83d\udccf ${d.distance_time || '\u2014'}\\n`;\n  html += `\ud83d\udc93 ${d.intensity || '\u2014'}\\n`;\n  html += `\ud83c\udfaf ${d.goal}\\n`;\n  if (d.note) html += `\ud83d\udcdd <i>${d.note}</i>\\n`;\n  html += `\\n`;\n}\n\nhtml += `\ud83d\udcda <b>Justificaci\u00f3n</b>\\n`;\njusts.forEach((j, i) => {\n  html += `${i + 1}. ${j}\\n`;\n});\n\n// 4\ufe0f\u20e3 Salida para el nodo Telegram\nreturn [{\n  json: {\n    htmlMessage: html.trim()\n  }\n}];\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -405,11 +405,231 @@
       ],
       "id": "a666d5c6-fc73-4016-9518-04b879e1022b",
       "name": "Schedule Trigger"
+    },
+    {
+      "id": "9522f055-e183-4aaa-b75e-803aecae3754",
+      "name": "Validate WeeklyPlan (attempt 0)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1260,
+        448
+      ],
+      "parameters": {
+        "jsCode": "\nconst attempt = 0;\n\nconst raw = Array.isArray(items[0].json.choices)\n  ? items[0].json.choices[0].message.content\n  : items[0].json;\n\nlet parsed = raw;\nlet parseError = null;\n\nif (typeof raw === 'string') {\n  try {\n    parsed = JSON.parse(raw);\n  } catch (err) {\n    parseError = err && err.message ? err.message : String(err);\n    parsed = null;\n  }\n}\n\nconst errors = [];\n\nif (parseError) {\n  errors.push(`invalid_json: ${parseError}`);\n}\n\nconst isObject = value => value && typeof value === 'object' && !Array.isArray(value);\nconst plan = isObject(parsed) ? parsed : {};\n\nconst dateRe = /^\\d{4}-\\d{2}-\\d{2}$/;\nconst dayRe = /^(Lunes|Martes|Miercoles|Mi\\u00e9rcoles|Jueves|Viernes|Sabado|S\\u00e1bado|Domingo)$/;\nconst intensityRe = /^(?:-|--|\\u2014|.*\\b(Z[1-5]|interval|Interval|VO2|Tempo|tempo|Umbral|umbral|Threshold|threshold|Easy|easy|Recovery|recovery)\\b.*)$/;\n\nconst reqString = (obj, key, path) => {\n  const value = obj ? obj[key] : undefined;\n  if (typeof value !== 'string' || !value.trim()) {\n    errors.push(`${path}.${key} missing`);\n    return false;\n  }\n  return true;\n};\n\nif (plan.schema_version !== '1.0') {\n  errors.push('schema_version must be \"1.0\"');\n}\n\nif (!isObject(plan.activityPlan)) {\n  errors.push('activityPlan must be object');\n}\n\nconst nextWeek = plan.activityPlan && plan.activityPlan.nextWeek;\nif (!isObject(nextWeek)) {\n  errors.push('activityPlan.nextWeek must be object');\n} else {\n  reqString(nextWeek, 'phase', 'activityPlan.nextWeek');\n  reqString(nextWeek, 'objective', 'activityPlan.nextWeek');\n  if (!reqString(nextWeek, 'weekStart', 'activityPlan.nextWeek') || !dateRe.test(nextWeek.weekStart)) {\n    errors.push('activityPlan.nextWeek.weekStart must be YYYY-MM-DD');\n  }\n  if (!reqString(nextWeek, 'weekEnd', 'activityPlan.nextWeek') || !dateRe.test(nextWeek.weekEnd)) {\n    errors.push('activityPlan.nextWeek.weekEnd must be YYYY-MM-DD');\n  }\n}\n\nconst days = plan.activityPlan && plan.activityPlan.days;\nif (!Array.isArray(days)) {\n  errors.push('activityPlan.days must be array');\n} else if (days.length !== 7) {\n  errors.push('activityPlan.days must have length 7');\n} else {\n  days.forEach((day, idx) => {\n    const path = `activityPlan.days[${idx}]`;\n    if (!isObject(day)) {\n      errors.push(`${path} must be object`);\n      return;\n    }\n    if (!reqString(day, 'day', path) || !dayRe.test(day.day)) {\n      errors.push(`${path}.day must be a valid weekday`);\n    }\n    if (!reqString(day, 'date', path) || !dateRe.test(day.date)) {\n      errors.push(`${path}.date must be YYYY-MM-DD`);\n    }\n    reqString(day, 'activity', path);\n    reqString(day, 'distance_time', path);\n    if (!reqString(day, 'intensity', path) || !intensityRe.test(day.intensity)) {\n      errors.push(`${path}.intensity must include a zone/label or be '-'/'--'/'\u2014'`);\n    }\n    reqString(day, 'goal', path);\n  });\n}\n\nconst valid = errors.length == 0;\n\nconst output = isObject(plan) ? JSON.parse(JSON.stringify(plan)) : {};\noutput.__valid = valid;\noutput.__errors = errors;\noutput.__attempt = attempt;\noutput.__raw = typeof raw === 'string' ? raw : JSON.stringify(raw);\n\nreturn [{ json: output }];\n"
+      }
+    },
+    {
+      "id": "7a2b301d-fd6d-4ee5-b110-49a4e452043a",
+      "name": "Is WeeklyPlan valid? (attempt 0)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        448
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.__valid }}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "87e5a8a5-9c48-41cc-896a-c3e01ba62563",
+      "name": "Build Repair Prompt (attempt 1)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        620
+      ],
+      "parameters": {
+        "jsCode": "\nconst attempt = 1;\nconst raw = items[0].json.__raw || JSON.stringify(items[0].json || {});\nconst errors = items[0].json.__errors || [];\n\nconst schemaSnippet = `{\n  \"schema_version\": \"1.0\",\n  \"activityPlan\": {\n    \"nextWeek\": { \"phase\": \"...\", \"objective\": \"...\", \"weekStart\": \"YYYY-MM-DD\", \"weekEnd\": \"YYYY-MM-DD\" },\n    \"days\": [\n      { \"day\": \"Lunes\", \"date\": \"YYYY-MM-DD\", \"activity\": \"...\", \"distance_time\": \"...\", \"intensity\": \"Z1-Z5\", \"goal\": \"...\", \"note\": \"...\" }\n    ]\n  },\n  \"justification\": [\"...\"]\n}`;\n\nconst repair_prompt = `You must return ONLY a valid minified JSON object that matches this schema snippet:\\n${schemaSnippet}\\n\\nInvalid output:\\n${raw}\\n\\nValidation errors:\\n${errors.join('\\n')}`;\n\nreturn [{ json: { repair_prompt, __attempt: attempt, __errors: errors, __raw: raw } }];\n"
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5",
+          "mode": "list",
+          "cachedResultName": "GPT-5"
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a JSON repair bot. Return only valid minified JSON."
+            },
+            {
+              "role": "user",
+              "content": "={{ $json.repair_prompt }}"
+            }
+          ]
+        },
+        "simplify": false,
+        "jsonOutput": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        1560,
+        620
+      ],
+      "id": "4c22d709-ea45-42bf-89dd-4142310c7f61",
+      "name": "Repair Plan 1",
+      "alwaysOutputData": false,
+      "credentials": {
+        "openAiApi": {
+          "id": "olyatB4PnLtBz9VL",
+          "name": "OpenAi account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "62498923-3e4e-4a4d-ae27-72860fdf147d",
+      "name": "Validate WeeklyPlan (attempt 1)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        620
+      ],
+      "parameters": {
+        "jsCode": "\nconst attempt = 1;\n\nconst raw = Array.isArray(items[0].json.choices)\n  ? items[0].json.choices[0].message.content\n  : items[0].json;\n\nlet parsed = raw;\nlet parseError = null;\n\nif (typeof raw === 'string') {\n  try {\n    parsed = JSON.parse(raw);\n  } catch (err) {\n    parseError = err && err.message ? err.message : String(err);\n    parsed = null;\n  }\n}\n\nconst errors = [];\n\nif (parseError) {\n  errors.push(`invalid_json: ${parseError}`);\n}\n\nconst isObject = value => value && typeof value === 'object' && !Array.isArray(value);\nconst plan = isObject(parsed) ? parsed : {};\n\nconst dateRe = /^\\d{4}-\\d{2}-\\d{2}$/;\nconst dayRe = /^(Lunes|Martes|Miercoles|Mi\\u00e9rcoles|Jueves|Viernes|Sabado|S\\u00e1bado|Domingo)$/;\nconst intensityRe = /^(?:-|--|\\u2014|.*\\b(Z[1-5]|interval|Interval|VO2|Tempo|tempo|Umbral|umbral|Threshold|threshold|Easy|easy|Recovery|recovery)\\b.*)$/;\n\nconst reqString = (obj, key, path) => {\n  const value = obj ? obj[key] : undefined;\n  if (typeof value !== 'string' || !value.trim()) {\n    errors.push(`${path}.${key} missing`);\n    return false;\n  }\n  return true;\n};\n\nif (plan.schema_version !== '1.0') {\n  errors.push('schema_version must be \"1.0\"');\n}\n\nif (!isObject(plan.activityPlan)) {\n  errors.push('activityPlan must be object');\n}\n\nconst nextWeek = plan.activityPlan && plan.activityPlan.nextWeek;\nif (!isObject(nextWeek)) {\n  errors.push('activityPlan.nextWeek must be object');\n} else {\n  reqString(nextWeek, 'phase', 'activityPlan.nextWeek');\n  reqString(nextWeek, 'objective', 'activityPlan.nextWeek');\n  if (!reqString(nextWeek, 'weekStart', 'activityPlan.nextWeek') || !dateRe.test(nextWeek.weekStart)) {\n    errors.push('activityPlan.nextWeek.weekStart must be YYYY-MM-DD');\n  }\n  if (!reqString(nextWeek, 'weekEnd', 'activityPlan.nextWeek') || !dateRe.test(nextWeek.weekEnd)) {\n    errors.push('activityPlan.nextWeek.weekEnd must be YYYY-MM-DD');\n  }\n}\n\nconst days = plan.activityPlan && plan.activityPlan.days;\nif (!Array.isArray(days)) {\n  errors.push('activityPlan.days must be array');\n} else if (days.length !== 7) {\n  errors.push('activityPlan.days must have length 7');\n} else {\n  days.forEach((day, idx) => {\n    const path = `activityPlan.days[${idx}]`;\n    if (!isObject(day)) {\n      errors.push(`${path} must be object`);\n      return;\n    }\n    if (!reqString(day, 'day', path) || !dayRe.test(day.day)) {\n      errors.push(`${path}.day must be a valid weekday`);\n    }\n    if (!reqString(day, 'date', path) || !dateRe.test(day.date)) {\n      errors.push(`${path}.date must be YYYY-MM-DD`);\n    }\n    reqString(day, 'activity', path);\n    reqString(day, 'distance_time', path);\n    if (!reqString(day, 'intensity', path) || !intensityRe.test(day.intensity)) {\n      errors.push(`${path}.intensity must include a zone/label or be '-'/'--'/'\u2014'`);\n    }\n    reqString(day, 'goal', path);\n  });\n}\n\nconst valid = errors.length == 0;\n\nconst output = isObject(plan) ? JSON.parse(JSON.stringify(plan)) : {};\noutput.__valid = valid;\noutput.__errors = errors;\noutput.__attempt = attempt;\noutput.__raw = typeof raw === 'string' ? raw : JSON.stringify(raw);\n\nreturn [{ json: output }];\n"
+      }
+    },
+    {
+      "id": "fa78a02f-56e7-4eb7-9abe-13ee6d7391b0",
+      "name": "Is WeeklyPlan valid? (attempt 1)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1960,
+        620
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.__valid }}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "82fbdd65-c54a-431a-b4af-7a0dec970aba",
+      "name": "Build Repair Prompt (attempt 2)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1960,
+        800
+      ],
+      "parameters": {
+        "jsCode": "\nconst attempt = 2;\nconst raw = items[0].json.__raw || JSON.stringify(items[0].json || {});\nconst errors = items[0].json.__errors || [];\n\nconst schemaSnippet = `{\n  \"schema_version\": \"1.0\",\n  \"activityPlan\": {\n    \"nextWeek\": { \"phase\": \"...\", \"objective\": \"...\", \"weekStart\": \"YYYY-MM-DD\", \"weekEnd\": \"YYYY-MM-DD\" },\n    \"days\": [\n      { \"day\": \"Lunes\", \"date\": \"YYYY-MM-DD\", \"activity\": \"...\", \"distance_time\": \"...\", \"intensity\": \"Z1-Z5\", \"goal\": \"...\", \"note\": \"...\" }\n    ]\n  },\n  \"justification\": [\"...\"]\n}`;\n\nconst repair_prompt = `You must return ONLY a valid minified JSON object that matches this schema snippet:\\n${schemaSnippet}\\n\\nInvalid output:\\n${raw}\\n\\nValidation errors:\\n${errors.join('\\n')}`;\n\nreturn [{ json: { repair_prompt, __attempt: attempt, __errors: errors, __raw: raw } }];\n"
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5",
+          "mode": "list",
+          "cachedResultName": "GPT-5"
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a JSON repair bot. Return only valid minified JSON."
+            },
+            {
+              "role": "user",
+              "content": "={{ $json.repair_prompt }}"
+            }
+          ]
+        },
+        "simplify": false,
+        "jsonOutput": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        2160,
+        800
+      ],
+      "id": "6001c0c9-0433-4398-b371-ef28ba5f7a0d",
+      "name": "Repair Plan 2",
+      "alwaysOutputData": false,
+      "credentials": {
+        "openAiApi": {
+          "id": "olyatB4PnLtBz9VL",
+          "name": "OpenAi account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "fb318502-d4da-4197-8708-51e0946a6a5b",
+      "name": "Validate WeeklyPlan (attempt 2)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2360,
+        800
+      ],
+      "parameters": {
+        "jsCode": "\nconst attempt = 2;\n\nconst raw = Array.isArray(items[0].json.choices)\n  ? items[0].json.choices[0].message.content\n  : items[0].json;\n\nlet parsed = raw;\nlet parseError = null;\n\nif (typeof raw === 'string') {\n  try {\n    parsed = JSON.parse(raw);\n  } catch (err) {\n    parseError = err && err.message ? err.message : String(err);\n    parsed = null;\n  }\n}\n\nconst errors = [];\n\nif (parseError) {\n  errors.push(`invalid_json: ${parseError}`);\n}\n\nconst isObject = value => value && typeof value === 'object' && !Array.isArray(value);\nconst plan = isObject(parsed) ? parsed : {};\n\nconst dateRe = /^\\d{4}-\\d{2}-\\d{2}$/;\nconst dayRe = /^(Lunes|Martes|Miercoles|Mi\\u00e9rcoles|Jueves|Viernes|Sabado|S\\u00e1bado|Domingo)$/;\nconst intensityRe = /^(?:-|--|\\u2014|.*\\b(Z[1-5]|interval|Interval|VO2|Tempo|tempo|Umbral|umbral|Threshold|threshold|Easy|easy|Recovery|recovery)\\b.*)$/;\n\nconst reqString = (obj, key, path) => {\n  const value = obj ? obj[key] : undefined;\n  if (typeof value !== 'string' || !value.trim()) {\n    errors.push(`${path}.${key} missing`);\n    return false;\n  }\n  return true;\n};\n\nif (plan.schema_version !== '1.0') {\n  errors.push('schema_version must be \"1.0\"');\n}\n\nif (!isObject(plan.activityPlan)) {\n  errors.push('activityPlan must be object');\n}\n\nconst nextWeek = plan.activityPlan && plan.activityPlan.nextWeek;\nif (!isObject(nextWeek)) {\n  errors.push('activityPlan.nextWeek must be object');\n} else {\n  reqString(nextWeek, 'phase', 'activityPlan.nextWeek');\n  reqString(nextWeek, 'objective', 'activityPlan.nextWeek');\n  if (!reqString(nextWeek, 'weekStart', 'activityPlan.nextWeek') || !dateRe.test(nextWeek.weekStart)) {\n    errors.push('activityPlan.nextWeek.weekStart must be YYYY-MM-DD');\n  }\n  if (!reqString(nextWeek, 'weekEnd', 'activityPlan.nextWeek') || !dateRe.test(nextWeek.weekEnd)) {\n    errors.push('activityPlan.nextWeek.weekEnd must be YYYY-MM-DD');\n  }\n}\n\nconst days = plan.activityPlan && plan.activityPlan.days;\nif (!Array.isArray(days)) {\n  errors.push('activityPlan.days must be array');\n} else if (days.length !== 7) {\n  errors.push('activityPlan.days must have length 7');\n} else {\n  days.forEach((day, idx) => {\n    const path = `activityPlan.days[${idx}]`;\n    if (!isObject(day)) {\n      errors.push(`${path} must be object`);\n      return;\n    }\n    if (!reqString(day, 'day', path) || !dayRe.test(day.day)) {\n      errors.push(`${path}.day must be a valid weekday`);\n    }\n    if (!reqString(day, 'date', path) || !dateRe.test(day.date)) {\n      errors.push(`${path}.date must be YYYY-MM-DD`);\n    }\n    reqString(day, 'activity', path);\n    reqString(day, 'distance_time', path);\n    if (!reqString(day, 'intensity', path) || !intensityRe.test(day.intensity)) {\n      errors.push(`${path}.intensity must include a zone/label or be '-'/'--'/'\u2014'`);\n    }\n    reqString(day, 'goal', path);\n  });\n}\n\nconst valid = errors.length == 0;\n\nconst output = isObject(plan) ? JSON.parse(JSON.stringify(plan)) : {};\noutput.__valid = valid;\noutput.__errors = errors;\noutput.__attempt = attempt;\noutput.__raw = typeof raw === 'string' ? raw : JSON.stringify(raw);\n\nreturn [{ json: output }];\n"
+      }
+    },
+    {
+      "id": "512261fd-832f-4c54-b584-199df7c8a2e5",
+      "name": "Is WeeklyPlan valid? (attempt 2)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2560,
+        800
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.__valid }}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "60ab564c-0d54-46ac-857f-17eaa539b4bc",
+      "name": "Fallback Trigger",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2760,
+        980
+      ],
+      "parameters": {
+        "jsCode": "throw new Error('Fallback required after max repair attempts.');"
+      }
     }
   ],
   "pinData": {},
   "connections": {
-    "When clicking ‘Execute workflow’": {
+    "When clicking \u2018Execute workflow\u2019": {
       "main": [
         [
           {
@@ -582,7 +802,7 @@
       "main": [
         [
           {
-            "node": "Build Telegram Message",
+            "node": "Validate WeeklyPlan (attempt 0)",
             "type": "main",
             "index": 0
           }
@@ -637,6 +857,140 @@
           }
         ]
       ]
+    },
+    "Validate WeeklyPlan (attempt 0)": {
+      "main": [
+        [
+          {
+            "node": "Is WeeklyPlan valid? (attempt 0)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is WeeklyPlan valid? (attempt 0)": {
+      "main": [
+        [
+          {
+            "node": "Build Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Repair Prompt (attempt 1)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Repair Prompt (attempt 1)": {
+      "main": [
+        [
+          {
+            "node": "Repair Plan 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Repair Plan 1": {
+      "main": [
+        [
+          {
+            "node": "Validate WeeklyPlan (attempt 1)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate WeeklyPlan (attempt 1)": {
+      "main": [
+        [
+          {
+            "node": "Is WeeklyPlan valid? (attempt 1)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is WeeklyPlan valid? (attempt 1)": {
+      "main": [
+        [
+          {
+            "node": "Build Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Repair Prompt (attempt 2)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Repair Prompt (attempt 2)": {
+      "main": [
+        [
+          {
+            "node": "Repair Plan 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Repair Plan 2": {
+      "main": [
+        [
+          {
+            "node": "Validate WeeklyPlan (attempt 2)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate WeeklyPlan (attempt 2)": {
+      "main": [
+        [
+          {
+            "node": "Is WeeklyPlan valid? (attempt 2)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is WeeklyPlan valid? (attempt 2)": {
+      "main": [
+        [
+          {
+            "node": "Build Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fallback Trigger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fallback Trigger": {
+      "main": []
     }
   },
   "active": true,
