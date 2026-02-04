@@ -87,12 +87,33 @@ jobs:
           set -euo pipefail
           api_url="https://${APP}.fly.dev/api/v1/workflows/Q9nTNHZ5vUBf58oI"
           echo "Updating workflow via API (app: $APP)"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          src = Path("workflows/running_coach_workflow.json")
+          dst = Path("/tmp/n8n_workflow_update.json")
+
+          allowed = {
+              "name",
+              "nodes",
+              "connections",
+              "settings",
+              "active",
+              "tags",
+              "meta",
+          }
+
+          data = json.loads(src.read_text())
+          sanitized = {k: data[k] for k in allowed if k in data}
+          dst.write_text(json.dumps(sanitized))
+          PY
           for attempt in {1..10}; do
             status=$(curl -s -o /tmp/n8n_update_response.json -w "%{http_code}" \
               -X PUT \
               -H "X-N8N-API-KEY: $N8N_API_KEY" \
               -H "Content-Type: application/json" \
-              --data-binary @workflows/running_coach_workflow.json \
+              --data-binary @/tmp/n8n_workflow_update.json \
               "$api_url" || true)
             if [ "$status" = "200" ]; then
               echo "✅ Workflow update succeeded"
