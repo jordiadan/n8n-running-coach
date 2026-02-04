@@ -114,11 +114,45 @@ jobs:
               "$api_url" || true)
             if [ "$status" = "200" ]; then
               echo "✅ Workflow update succeeded"
-              exit 0
+              break
             fi
             echo "⏳ Update attempt $attempt failed (status: $status); retrying in 6s..."
             sleep 6
           done
-          echo "❌ Workflow update failed after retries"
-          cat /tmp/n8n_update_response.json || true
-          exit 1
+          if [ "${status:-}" != "200" ]; then
+            echo "❌ Workflow update failed after retries"
+            cat /tmp/n8n_update_response.json || true
+            exit 1
+          fi
+          echo "Verifying workflow payload matches repo"
+          curl -s -o /tmp/n8n_workflow_remote.json \
+            -H "X-N8N-API-KEY: $N8N_API_KEY" \
+            "$api_url"
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          allowed = {"name", "nodes", "connections", "settings"}
+
+          def canonical(obj):
+              return json.dumps(obj, sort_keys=True, separators=(",", ":")).encode()
+
+          local_path = Path("/tmp/n8n_workflow_update.json")
+          remote_path = Path("/tmp/n8n_workflow_remote.json")
+
+          local = json.loads(local_path.read_text())
+          remote_raw = json.loads(remote_path.read_text())
+          remote = {k: remote_raw[k] for k in allowed if k in remote_raw}
+
+          local_hash = hashlib.sha256(canonical(local)).hexdigest()
+          remote_hash = hashlib.sha256(canonical(remote)).hexdigest()
+
+          if local_hash != remote_hash:
+              print("❌ Workflow verification failed")
+              print(f"local_hash={local_hash}")
+              print(f"remote_hash={remote_hash}")
+              raise SystemExit(1)
+
+          print("✅ Workflow verification succeeded")
+          PY
