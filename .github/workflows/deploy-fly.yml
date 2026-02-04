@@ -136,6 +136,17 @@ jobs:
           allowed = {"name", "nodes", "connections", "settings"}
           drop_keys = {"webhookId"}
 
+          def normalize_nodes(nodes):
+              normalized = []
+              for node in nodes:
+                  if not isinstance(node, dict):
+                      continue
+                  node = scrub(node)
+                  node.pop("id", None)
+                  normalized.append(node)
+              normalized.sort(key=lambda item: item.get("name", ""))
+              return normalized
+
           def scrub(obj):
               if isinstance(obj, dict):
                   return {k: scrub(v) for k, v in obj.items() if k not in drop_keys}
@@ -152,6 +163,9 @@ jobs:
           local = scrub(json.loads(local_path.read_text()))
           remote_raw = json.loads(remote_path.read_text())
           remote = scrub({k: remote_raw[k] for k in allowed if k in remote_raw})
+
+          local["nodes"] = normalize_nodes(local.get("nodes", []))
+          remote["nodes"] = normalize_nodes(remote.get("nodes", []))
 
           local_hash = hashlib.sha256(canonical(local)).hexdigest()
           remote_hash = hashlib.sha256(canonical(remote)).hexdigest()
