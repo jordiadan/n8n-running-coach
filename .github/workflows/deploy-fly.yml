@@ -100,8 +100,6 @@ jobs:
               "connections",
               "settings",
               "active",
-              "tags",
-              "meta",
           }
 
           data = json.loads(src.read_text())
