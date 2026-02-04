@@ -99,7 +99,6 @@ jobs:
               "nodes",
               "connections",
               "settings",
-              "active",
           }
 
           data = json.loads(src.read_text())
