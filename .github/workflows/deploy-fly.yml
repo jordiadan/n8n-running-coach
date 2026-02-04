@@ -42,15 +42,19 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
+          N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
         run: |
           set -euo pipefail
           if [ -z "${FLY_API_TOKEN:-}" ]; then
-            echo "❌ Falta FLY_API_TOKEN"; exit 1
+            echo "❌ Missing FLY_API_TOKEN"; exit 1
           fi
           if [ -z "${N8N_ENCRYPTION_KEY:-}" ]; then
-            echo "❌ Falta N8N_ENCRYPTION_KEY"; exit 1
+            echo "❌ Missing N8N_ENCRYPTION_KEY"; exit 1
           fi
-          echo "✅ Secrets presentes"
+          if [ -z "${N8N_API_KEY:-}" ]; then
+            echo "❌ Missing N8N_API_KEY"; exit 1
+          fi
+          echo "✅ Required secrets present"
 
       - name: Setup flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
@@ -75,19 +79,28 @@ jobs:
         run: |
           flyctl deploy --app "$APP" --config "fly.toml" --remote-only
 
-      - name: Import workflow into n8n
+      - name: Update workflow via n8n API
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
         run: |
           set -euo pipefail
-          echo "Importing workflow into n8n (app: $APP)"
+          api_url="https://${APP}.fly.dev/api/v1/workflows/Q9nTNHZ5vUBf58oI"
+          echo "Updating workflow via API (app: $APP)"
           for attempt in {1..10}; do
-            if flyctl ssh console --app "$APP" --user node -C "env N8N_USER_FOLDER=/home/node/.n8n HOME=/home/node n8n import:workflow --input /opt/workflows/running_coach_workflow.json --overwrite"; then
-              echo "✅ Workflow import succeeded"
+            status=$(curl -s -o /tmp/n8n_update_response.json -w "%{http_code}" \
+              -X PUT \
+              -H "X-N8N-API-KEY: $N8N_API_KEY" \
+              -H "Content-Type: application/json" \
+              --data-binary @workflows/running_coach_workflow.json \
+              "$api_url" || true)
+            if [ "$status" = "200" ]; then
+              echo "✅ Workflow update succeeded"
               exit 0
             fi
-            echo "⏳ Import attempt $attempt failed; retrying in 6s..."
+            echo "⏳ Update attempt $attempt failed (status: $status); retrying in 6s..."
             sleep 6
           done
-          echo "❌ Workflow import failed after retries"
+          echo "❌ Workflow update failed after retries"
+          cat /tmp/n8n_update_response.json || true
           exit 1
