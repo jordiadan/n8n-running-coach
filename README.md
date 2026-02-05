@@ -201,6 +201,7 @@ For complete rules, see:
 ## Data Lineage
 
 - `docs/data_lineage.md` documents collections and field ownership.
+- `docs/prompt_versioning.md` describes how prompt versions are managed.
 - `scripts/bootstrap_run_events_indexes.js` creates baseline indexes for `run_events`.
 
 ## Plan Guardrails (Hard Rules)
