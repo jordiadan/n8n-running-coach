@@ -31,6 +31,10 @@ db.plan_snapshots.createIndex({ runId: 1 }, { unique: true, name: "plan_snapshot
 db.plan_snapshots.createIndex({ weekStart: 1 }, { name: "plan_snapshots_weekStart" });
 ensureTtlIndex(db.plan_snapshots, "plan_snapshots_createdAt_ttl", 60 * 60 * 24 * 365);
 
+db.run_artifacts.createIndex({ runId: 1 }, { unique: true, name: "run_artifacts_runId_unique" });
+db.run_artifacts.createIndex({ createdAt: -1 }, { name: "run_artifacts_createdAt_desc" });
+
 print("run_events indexes ensured.");
 print("weekly_metrics indexes ensured.");
 print("plan_snapshots indexes ensured.");
+print("run_artifacts indexes ensured.");

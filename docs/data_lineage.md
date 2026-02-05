@@ -65,6 +65,35 @@ Fields (top-level):
 Notes:
 - `runId` is the update key for upserts.
 
+### run_artifacts
+
+Purpose: capture inputs, model metadata, and outputs for each run to enable audit/debugging.
+
+Written by:
+- `Run Artifacts DB (inputs)` (MongoDB node).
+- `Build Run Artifact (outputs)` + `Run Artifacts DB (outputs)`.
+
+Fields (top-level):
+- `runId` (string, unique): linked to run_events and plan_snapshots.
+- `promptVersion` (string): prompt version identifier.
+- `modelId` (string): LLM model name.
+- `prompt` (string): system prompt sent to the model.
+- `metrics` (object): computed weekly metrics.
+- `history` (array): prior week summaries.
+- `activities` (array): raw activity inputs.
+- `wellness` (array): raw wellness inputs.
+- `status` (string): `success` or `failure`.
+- `attempt` (number | null): validation attempt used for final output.
+- `outputValidated` (object | null): validated WeeklyPlan payload.
+- `outputRaw` (string | null): raw model output (minified JSON string).
+- `errors` (array): validation errors (if any).
+- `errorCount` (number): number of validation errors.
+- `createdAt` (string): ISO timestamp for input capture.
+- `updatedAt` (string): ISO timestamp for output capture.
+
+Notes:
+- `runId` is the update key for upserts.
+
 ## Indexes
 
 Recommended indexes for `run_events`:
@@ -81,11 +110,16 @@ Recommended indexes for `plan_snapshots`:
 - Week lookups: `{ weekStart: 1 }`
 - TTL: `{ createdAt: 1 }` (365 days)
 
+Recommended indexes for `run_artifacts`:
+- Unique: `{ runId: 1 }`
+- Time-based lookup: `{ createdAt: -1 }`
+
 ## Retention Guidance
 
 - `run_events`: keep at least 90 days of history for debugging/alert review.
 - `weekly_metrics`: keep at least 12 months to preserve training trends.
 - `plan_snapshots`: keep at least 12 months for audit and comparison.
+- `run_artifacts`: keep at least 12 months for audit and debugging.
 
 ## Bootstrap
 
