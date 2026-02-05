@@ -195,6 +195,7 @@ For complete rules, see:
 ## Plan Guardrails (Hard Rules)
 
 - Max 2 hard sessions per week; no back-to-back hard days.
+- Exactly 7 unique weekdays must be present in the plan.
 - At least one rest or recovery day.
 - Only one long run; long run cannot be hard intensity.
 - Gym/strength work is expected on Tuesday, Thursday, and Saturday.
