@@ -147,24 +147,15 @@ jobs:
               normalized.sort(key=lambda item: item.get("name", ""))
               return normalized
 
-          def scrub_credentials(creds):
-              normalized = {}
-              for name, cfg in creds.items():
-                  if isinstance(cfg, dict):
-                      cfg = {ck: scrub(cv) for ck, cv in cfg.items() if ck != "id"}
-                  normalized[name] = cfg
-              return normalized
-
           def scrub(obj):
               if isinstance(obj, dict):
                   cleaned = {}
                   for k, v in obj.items():
                       if k in drop_keys:
                           continue
-                      if k == "credentials" and isinstance(v, dict):
-                          cleaned[k] = scrub_credentials(v)
-                      else:
-                          cleaned[k] = scrub(v)
+                      if k == "credentials":
+                          continue
+                      cleaned[k] = scrub(v)
                   return cleaned
               if isinstance(obj, list):
                   return [scrub(v) for v in obj]
