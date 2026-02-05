@@ -17,7 +17,18 @@ EASY_TOKENS = ["z1", "z2", "easy", "recovery", "recuper", "suave"]
 REST_TOKENS = ["descanso", "rest", "off"]
 LONG_TOKENS = ["tirada", "larga", "long"]
 GYM_TOKENS = ["gimnasio", "gym", "fuerza", "strength"]
-RUN_TOKENS = ["run", "tempo", "vo2", "interval", "umbral", "threshold"]
+RUN_TOKENS = [
+    "run",
+    "tempo",
+    "vo2",
+    "interval",
+    "umbral",
+    "threshold",
+    "rodaje",
+    "carrera",
+    "trote",
+    "continu",
+]
 REQUIRED_DAYS = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
 
 
