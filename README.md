@@ -155,6 +155,13 @@ Deploy action:
 - Stages encryption secret in Fly
 - Deploys app using `fly.toml`
 
+Verification behavior:
+
+- Compares nodes with normalized ordering (sorted by node name).
+- Normalizes connection ordering to avoid API response ordering drift.
+- Verifies credential *mapping keys* only (ignores credential IDs/values).
+- Compares only settings keys present in the repo (ignores remote defaults).
+
 ## Project Management and Team Workflow
 
 Jira backlog for this project:
