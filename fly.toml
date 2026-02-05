@@ -19,13 +19,20 @@ handlers = ["http"]
 [[services.ports]]
 port = 443
 handlers = ["tls", "http"]
+[[services.http_checks]]
+path = "/healthz"
+interval = "30s"
+timeout = "5s"
+grace_period = "10s"
+method = "GET"
+protocol = "http"
 
-# Opcional pero recomendado: volumen persistente para /home/node/.n8n
+# Optional but recommended: persistent volume for /home/node/.n8n
 [[mounts]]
 source = "n8n_data"
 destination = "/home/node/.n8n"
 
-# Recursos opcionales
+# Optional resources
 [vm]
 memory = "512mb"
 cpu_kind = "shared"
