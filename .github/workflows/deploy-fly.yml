@@ -153,7 +153,8 @@ jobs:
                   for k, v in obj.items():
                       if k in drop_keys:
                           continue
-                      if k == "credentials":
+                      if k == "credentials" and isinstance(v, dict):
+                          cleaned[k] = {name: {} for name in v.keys()}
                           continue
                       cleaned[k] = scrub(v)
                   return cleaned
