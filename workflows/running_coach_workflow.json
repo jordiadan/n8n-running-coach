@@ -729,6 +729,33 @@
           "name": "Telegram account"
         }
       }
+    },
+    {
+      "id": "2d8f2e3c-1c6b-4b11-8b6f-6d6a1fcb55a2",
+      "name": "Plan Snapshots DB",
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.2,
+      "position": [
+        1388,
+        328
+      ],
+      "alwaysOutputData": true,
+      "parameters": {
+        "operation": "findOneAndUpdate",
+        "collection": "plan_snapshots",
+        "updateKey": "runId",
+        "fields": "runId, attempt, weekStart, weekEnd, schema_version, activityPlan, justification, createdAt",
+        "upsert": true,
+        "options": {
+          "dateFields": "createdAt"
+        }
+      },
+      "credentials": {
+        "mongoDb": {
+          "id": "8KyRHmD3ScRn2PPF",
+          "name": "MongoDB account"
+        }
+      }
     }
   ],
   "pinData": {},
@@ -1100,6 +1127,11 @@
       "main": [
         [
           {
+            "node": "Plan Snapshots DB",
+            "type": "main",
+            "index": 0
+          },
+          {
             "node": "Build Telegram Message",
             "type": "main",
             "index": 0
@@ -1150,6 +1182,9 @@
           }
         ]
       ]
+    },
+    "Plan Snapshots DB": {
+      "main": []
     }
   },
   "active": true,

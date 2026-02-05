@@ -46,6 +46,25 @@ Key fields:
 - `restHrMean`, `stepsMean`, `sleepScoreMean`, `hrvMean`
 - `createdAt`, `updatedAt`
 
+### plan_snapshots
+
+Purpose: store successful weekly plan outputs for audit and comparison.
+
+Written by:
+- `Plan Snapshots DB` (MongoDB node).
+
+Fields (top-level):
+- `runId` (string, unique): linked to run_events.
+- `attempt` (number | null): validation attempt that produced the plan.
+- `weekStart`, `weekEnd` (string): `YYYY-MM-DD`.
+- `schema_version` (string).
+- `activityPlan` (object).
+- `justification` (array).
+- `createdAt` (string): ISO timestamp.
+
+Notes:
+- `runId` is the update key for upserts.
+
 ## Indexes
 
 Recommended indexes for `run_events`:
@@ -56,6 +75,11 @@ Recommended indexes for `run_events`:
 Recommended indexes for `weekly_metrics`:
 - Unique: `{ weekStart: 1 }` (single-athlete assumption)
 - Time-based lookup: `{ createdAt: -1 }`
+
+Recommended indexes for `plan_snapshots`:
+- Unique: `{ runId: 1 }`
+- Time-based lookup: `{ createdAt: -1 }`
+- Week lookups: `{ weekStart: 1 }`
 
 ## Retention Guidance
 

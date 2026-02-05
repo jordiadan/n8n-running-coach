@@ -9,5 +9,10 @@ db.run_events.createIndex({ status: 1, createdAt: -1 }, { name: "run_events_stat
 db.weekly_metrics.createIndex({ weekStart: 1 }, { unique: true, name: "weekly_metrics_weekStart_unique" });
 db.weekly_metrics.createIndex({ createdAt: -1 }, { name: "weekly_metrics_createdAt_desc" });
 
+db.plan_snapshots.createIndex({ runId: 1 }, { unique: true, name: "plan_snapshots_runId_unique" });
+db.plan_snapshots.createIndex({ createdAt: -1 }, { name: "plan_snapshots_createdAt_desc" });
+db.plan_snapshots.createIndex({ weekStart: 1 }, { name: "plan_snapshots_weekStart" });
+
 print("run_events indexes ensured.");
 print("weekly_metrics indexes ensured.");
+print("plan_snapshots indexes ensured.");
