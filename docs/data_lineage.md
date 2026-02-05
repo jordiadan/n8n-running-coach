@@ -71,6 +71,7 @@ Recommended indexes for `run_events`:
 - Unique: `{ runId: 1 }`
 - Time-based lookup: `{ createdAt: -1 }`
 - Status filter: `{ status: 1, createdAt: -1 }`
+- TTL: `{ createdAt: 1 }` (90 days)
 
 Recommended indexes for `weekly_metrics`:
 - Unique: `{ weekStart: 1 }` (single-athlete assumption)
@@ -80,11 +81,13 @@ Recommended indexes for `plan_snapshots`:
 - Unique: `{ runId: 1 }`
 - Time-based lookup: `{ createdAt: -1 }`
 - Week lookups: `{ weekStart: 1 }`
+- TTL: `{ createdAt: 1 }` (365 days)
 
 ## Retention Guidance
 
 - `run_events`: keep at least 90 days of history for debugging/alert review.
 - `weekly_metrics`: keep at least 12 months to preserve training trends.
+- `plan_snapshots`: keep at least 12 months for audit and comparison.
 
 ## Bootstrap
 
