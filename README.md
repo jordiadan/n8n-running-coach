@@ -192,6 +192,13 @@ For complete rules, see:
 - The Dockerfile sets `DB_TYPE=postgres`; integration tests override this to SQLite.
 - For production, ensure DB config and credentials are aligned with your actual infrastructure.
 
+## Plan Guardrails (Hard Rules)
+
+- Max 2 hard sessions per week; no back-to-back hard days.
+- At least one rest or recovery day.
+- Only one long run; long run cannot be hard intensity.
+- Gym/strength work is expected on Tuesday, Thursday, and Saturday.
+
 ## Security Considerations
 
 - Never commit real API keys, bot tokens, or production credentials.
