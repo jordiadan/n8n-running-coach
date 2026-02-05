@@ -198,6 +198,11 @@ For complete rules, see:
 - Validation failures send a Telegram alert before the workflow throws the fallback error.
 - Fly health checks call `/healthz` on the n8n instance.
 
+## Data Lineage
+
+- `docs/data_lineage.md` documents collections and field ownership.
+- `scripts/bootstrap_run_events_indexes.js` creates baseline indexes for `run_events`.
+
 ## Plan Guardrails (Hard Rules)
 
 - Max 2 hard sessions per week; no back-to-back hard days.
