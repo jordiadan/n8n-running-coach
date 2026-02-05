@@ -10,7 +10,8 @@ from pathlib import Path
 WORKFLOW_PATH = "workflows/running_coach_workflow.json"
 NODE_NAME = "Prompt Builder"
 VERSION_RE = re.compile(r"PROMPT_VERSION\s*=\s*\"([^\"]+)\"")
-PROMPT_RE = re.compile(r"const\s+prompt\s*=\s*`(.*?)`\.trim\(\);", re.DOTALL)
+PROMPT_BEGIN = "// PROMPT_BEGIN"
+PROMPT_END = "// PROMPT_END"
 
 
 def run_git(args: list[str]) -> subprocess.CompletedProcess[str]:
@@ -41,7 +42,7 @@ def load_workflow_from_disk() -> dict:
     return json.loads(Path(WORKFLOW_PATH).read_text())
 
 
-def extract_prompt_and_version(workflow: dict) -> tuple[str, str]:
+def extract_prompt_and_version(workflow: dict) -> tuple[str | None, str | None]:
     nodes = workflow.get("nodes", [])
     node = next((n for n in nodes if n.get("name") == NODE_NAME), None)
     if not node:
@@ -49,14 +50,14 @@ def extract_prompt_and_version(workflow: dict) -> tuple[str, str]:
         sys.exit(1)
     code = node.get("parameters", {}).get("jsCode", "")
     version_match = VERSION_RE.search(code)
-    prompt_match = PROMPT_RE.search(code)
     if not version_match:
-        print("PROMPT_VERSION not found in Prompt Builder")
-        sys.exit(1)
-    if not prompt_match:
-        print("Prompt template not found in Prompt Builder")
-        sys.exit(1)
-    return prompt_match.group(1), version_match.group(1)
+        return None, None
+    start = code.find(PROMPT_BEGIN)
+    end = code.find(PROMPT_END)
+    if start == -1 or end == -1 or end <= start:
+        return None, None
+    prompt_body = code[start + len(PROMPT_BEGIN) : end].strip()
+    return prompt_body, version_match.group(1)
 
 
 def main() -> int:
@@ -65,6 +66,14 @@ def main() -> int:
 
     base_prompt, base_version = extract_prompt_and_version(base)
     head_prompt, head_version = extract_prompt_and_version(head)
+
+    if base_prompt is None or base_version is None:
+        print("Base prompt versioning not initialized; skipping check.")
+        return 0
+
+    if head_prompt is None or head_version is None:
+        print("Prompt markers or PROMPT_VERSION missing in workflow.")
+        return 1
 
     if base_prompt != head_prompt and base_version == head_version:
         print("Prompt template changed without bumping PROMPT_VERSION.")

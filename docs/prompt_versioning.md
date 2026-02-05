@@ -7,7 +7,7 @@ This repo tracks prompt changes with a simple version string stored in the workf
 - The Prompt Builder defines a single constant `PROMPT_VERSION`.
 - Any change to the prompt template must bump `PROMPT_VERSION`.
 - The value is persisted to `run_artifacts.promptVersion` for audit and comparison.
-- CI enforces that prompt template changes include a version bump.
+- CI enforces that prompt template changes include a version bump. The template is delimited by `// PROMPT_BEGIN` and `// PROMPT_END`.
 
 ## Where it lives
 
