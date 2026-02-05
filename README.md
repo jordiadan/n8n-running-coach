@@ -192,6 +192,12 @@ For complete rules, see:
 - The Dockerfile sets `DB_TYPE=postgres`; integration tests override this to SQLite.
 - For production, ensure DB config and credentials are aligned with your actual infrastructure.
 
+## Observability
+
+- Each run writes a `run_events` record in MongoDB with status, attempt, weekStart/weekEnd, and errors.
+- Validation failures send a Telegram alert before the workflow throws the fallback error.
+- Fly health checks call `/healthz` on the n8n instance.
+
 ## Plan Guardrails (Hard Rules)
 
 - Max 2 hard sessions per week; no back-to-back hard days.

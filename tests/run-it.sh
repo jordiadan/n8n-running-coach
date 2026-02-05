@@ -207,6 +207,11 @@ patch_workflow() {
         | .typeVersion = 2
         | .parameters = {jsCode: $js_telegram}
         | del(.credentials)
+      elif .name == "Send Failure Alert" then
+        .type = "n8n-nodes-base.code"
+        | .typeVersion = 2
+        | .parameters = {jsCode: $js_telegram}
+        | del(.credentials)
       else .
       end
     )
@@ -219,8 +224,8 @@ patch_workflow() {
         [{ "node": "Build Repair Prompt (attempt 2)", "type": "main", "index": 0 }]
       ]
     | .connections["Is WeeklyPlan valid? (attempt 2)"].main = [
-        [{ "node": "Build Telegram Message", "type": "main", "index": 0 }],
-        [{ "node": "Build Telegram Message", "type": "main", "index": 0 }]
+        [{ "node": "Build Run Event (success)", "type": "main", "index": 0 }],
+        [{ "node": "Build Run Event (success)", "type": "main", "index": 0 }]
       ]
   ' "$WORKFLOW_FILE" > "$PATCHED_JSON"
 }
@@ -282,6 +287,9 @@ PY
     printf "%s\n%s\n" \
       "$skip_names" \
       "$(jq -r '.nodes[] | select(.name == "Fallback Trigger") | .name' "$WORKFLOW_FILE")" \
+      "$(jq -r '.nodes[] | select(.name == "Build Failure Event") | .name' "$WORKFLOW_FILE")" \
+      "$(jq -r '.nodes[] | select(.name == "Run Events DB (failure)") | .name' "$WORKFLOW_FILE")" \
+      "$(jq -r '.nodes[] | select(.name == "Send Failure Alert") | .name' "$WORKFLOW_FILE")" \
     | sed '/^$/d'
   )"
 

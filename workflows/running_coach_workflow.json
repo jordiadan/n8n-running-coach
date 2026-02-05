@@ -416,7 +416,7 @@
         448
       ],
       "parameters": {
-        "jsCode": "\nconst attempt = 0;\n\nconst raw = Array.isArray(items[0].json.choices)\n  ? items[0].json.choices[0].message.content\n  : items[0].json;\n\nlet parsed = raw;\nlet parseError = null;\n\nif (typeof raw === 'string') {\n  try {\n    parsed = JSON.parse(raw);\n  } catch (err) {\n    parseError = err && err.message ? err.message : String(err);\n    parsed = null;\n  }\n}\n\nconst errors = [];\n\nif (parseError) {\n  errors.push(`invalid_json: ${parseError}`);\n}\n\nconst isObject = value => value && typeof value === 'object' && !Array.isArray(value);\nconst plan = isObject(parsed) ? parsed : {};\n\nconst dateRe = /^\\d{4}-\\d{2}-\\d{2}$/;\nconst dayRe = /^(Lunes|Martes|Miercoles|Mi\\u00e9rcoles|Jueves|Viernes|Sabado|S\\u00e1bado|Domingo)$/;\nconst intensityRe = /^(?:-|--|\\u2014|.*\\b(Z[1-5]|interval|Interval|VO2|Tempo|tempo|Umbral|umbral|Threshold|threshold|Easy|easy|Recovery|recovery)\\b.*)$/;\n\nconst reqString = (obj, key, path) => {\n  const value = obj ? obj[key] : undefined;\n  if (typeof value !== 'string' || !value.trim()) {\n    errors.push(`${path}.${key} missing`);\n    return false;\n  }\n  return true;\n};\n\nif (plan.schema_version !== '1.0') {\n  errors.push('schema_version must be \"1.0\"');\n}\n\nif (!isObject(plan.activityPlan)) {\n  errors.push('activityPlan must be object');\n}\n\nconst nextWeek = plan.activityPlan && plan.activityPlan.nextWeek;\nif (!isObject(nextWeek)) {\n  errors.push('activityPlan.nextWeek must be object');\n} else {\n  reqString(nextWeek, 'phase', 'activityPlan.nextWeek');\n  reqString(nextWeek, 'objective', 'activityPlan.nextWeek');\n  if (!reqString(nextWeek, 'weekStart', 'activityPlan.nextWeek') || !dateRe.test(nextWeek.weekStart)) {\n    errors.push('activityPlan.nextWeek.weekStart must be YYYY-MM-DD');\n  }\n  if (!reqString(nextWeek, 'weekEnd', 'activityPlan.nextWeek') || !dateRe.test(nextWeek.weekEnd)) {\n    errors.push('activityPlan.nextWeek.weekEnd must be YYYY-MM-DD');\n  }\n}\n\nconst days = plan.activityPlan && plan.activityPlan.days;\nif (!Array.isArray(days)) {\n  errors.push('activityPlan.days must be array');\n} else if (days.length !== 7) {\n  errors.push('activityPlan.days must have length 7');\n} else {\n  days.forEach((day, idx) => {\n    const path = `activityPlan.days[${idx}]`;\n    if (!isObject(day)) {\n      errors.push(`${path} must be object`);\n      return;\n    }\n    if (!reqString(day, 'day', path) || !dayRe.test(day.day)) {\n      errors.push(`${path}.day must be a valid weekday`);\n    }\n    if (!reqString(day, 'date', path) || !dateRe.test(day.date)) {\n      errors.push(`${path}.date must be YYYY-MM-DD`);\n    }\n    reqString(day, 'activity', path);\n    reqString(day, 'distance_time', path);\n    if (!reqString(day, 'intensity', path) || !intensityRe.test(day.intensity)) {\n      errors.push(`${path}.intensity must include a zone/label or be '-'/'--'/'\u2014'`);\n    }\n    reqString(day, 'goal', path);\n  });\n}\n\n\n// Guardrails (hard rules)\nif (Array.isArray(days) && days.length === 7) {\n  const normalizeDay = (value) => (value || '')\n    .toLowerCase()\n    .replace(/[áàä]/g, 'a')\n    .replace(/[éèë]/g, 'e')\n    .replace(/[íìï]/g, 'i')\n    .replace(/[óòö]/g, 'o')\n    .replace(/[úùü]/g, 'u')\n    .replace(/ñ/g, 'n');\n  const activityText = (day) => `${day.activity || ''} ${day.goal || ''} ${day.note || ''}`.toLowerCase();\n  const intensityText = (day) => (day.intensity || '').toLowerCase();\n  const containsToken = (text, tokens) => tokens.some((token) => text.includes(token));\n\n  const hardTokens = ['z4', 'z5', 'vo2', 'interval', 'umbral', 'tempo', 'threshold'];\n  const easyTokens = ['z1', 'z2', 'easy', 'recovery', 'recuper', 'suave'];\n  const restTokens = ['descanso', 'rest', 'off'];\n  const longTokens = ['tirada', 'larga', 'long'];\n  const gymTokens = ['gimnasio', 'gym', 'fuerza', 'strength'];\n\n  const isHard = (day) => containsToken(intensityText(day), hardTokens) || containsToken(activityText(day), hardTokens);\n  const isEasy = (day) => containsToken(intensityText(day), easyTokens) || containsToken(activityText(day), easyTokens);\n  const isRest = (day) => containsToken(activityText(day), restTokens) || ['-', '--', '—', '–'].includes((day.intensity || '').trim());\n  const normalizedDays = days.map((day) => normalizeDay(day.day));\n  const uniqueDays = new Set(normalizedDays);\n  if (uniqueDays.size !== 7) {\n    errors.push('guardrail: days must cover all weekdays exactly once');\n  }\n  const requiredDays = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];\n  requiredDays.forEach((name) => {\n    if (!uniqueDays.has(name)) {\n      errors.push(`guardrail: missing weekday ${name}`);\n    }\n  });\n\n  const isLong = (day) => containsToken(activityText(day), longTokens);\n\n  const hardCount = days.filter(isHard).length;\n  if (hardCount > 2) {\n    errors.push(`guardrail: too many hard sessions (${hardCount} > 2)`);\n  }\n\n  for (let i = 1; i < days.length; i += 1) {\n    if (isHard(days[i]) && isHard(days[i - 1])) {\n      errors.push(`guardrail: back-to-back hard sessions (days ${i} and ${i + 1})`);\n    }\n  }\n\n  const hasRecovery = days.some((day) => isRest(day) || isEasy(day));\n  if (!hasRecovery) {\n    errors.push('guardrail: must include at least one rest or recovery day');\n  }\n\n  const longCount = days.filter(isLong).length;\n  if (longCount > 1) {\n    errors.push('guardrail: only one long run per week');\n  }\n\n  days.forEach((day, idx) => {\n    if (isLong(day) && isHard(day)) {\n      errors.push(`guardrail: long run cannot be hard intensity (day ${idx + 1})`);\n    }\n  });\n\n  const gymDays = ['martes', 'jueves', 'sabado'];\n  gymDays.forEach((name) => {\n    const day = days.find((d) => normalizeDay(d.day) === name);\n    if (day && !containsToken(activityText(day), gymTokens)) {\n      errors.push(`guardrail: ${name} should include gym/strength`);\n    }\n  });\n}\nconst valid = errors.length == 0;\n\nconst output = isObject(plan) ? JSON.parse(JSON.stringify(plan)) : {};\noutput.__valid = valid;\noutput.__errors = errors;\noutput.__attempt = attempt;\noutput.__raw = typeof raw === 'string' ? raw : JSON.stringify(raw);\n\nreturn [{ json: output }];\n"
+        "jsCode": "\nconst attempt = 0;\n\nconst raw = Array.isArray(items[0].json.choices)\n  ? items[0].json.choices[0].message.content\n  : items[0].json;\n\nlet parsed = raw;\nlet parseError = null;\n\nif (typeof raw === 'string') {\n  try {\n    parsed = JSON.parse(raw);\n  } catch (err) {\n    parseError = err && err.message ? err.message : String(err);\n    parsed = null;\n  }\n}\n\nconst errors = [];\n\nif (parseError) {\n  errors.push(`invalid_json: ${parseError}`);\n}\n\nconst isObject = value => value && typeof value === 'object' && !Array.isArray(value);\nconst plan = isObject(parsed) ? parsed : {};\n\nconst dateRe = /^\\d{4}-\\d{2}-\\d{2}$/;\nconst dayRe = /^(Lunes|Martes|Miercoles|Mi\\u00e9rcoles|Jueves|Viernes|Sabado|S\\u00e1bado|Domingo)$/;\nconst intensityRe = /^(?:-|--|\\u2014|.*\\b(Z[1-5]|interval|Interval|VO2|Tempo|tempo|Umbral|umbral|Threshold|threshold|Easy|easy|Recovery|recovery)\\b.*)$/;\n\nconst reqString = (obj, key, path) => {\n  const value = obj ? obj[key] : undefined;\n  if (typeof value !== 'string' || !value.trim()) {\n    errors.push(`${path}.${key} missing`);\n    return false;\n  }\n  return true;\n};\n\nif (plan.schema_version !== '1.0') {\n  errors.push('schema_version must be \"1.0\"');\n}\n\nif (!isObject(plan.activityPlan)) {\n  errors.push('activityPlan must be object');\n}\n\nconst nextWeek = plan.activityPlan && plan.activityPlan.nextWeek;\nif (!isObject(nextWeek)) {\n  errors.push('activityPlan.nextWeek must be object');\n} else {\n  reqString(nextWeek, 'phase', 'activityPlan.nextWeek');\n  reqString(nextWeek, 'objective', 'activityPlan.nextWeek');\n  if (!reqString(nextWeek, 'weekStart', 'activityPlan.nextWeek') || !dateRe.test(nextWeek.weekStart)) {\n    errors.push('activityPlan.nextWeek.weekStart must be YYYY-MM-DD');\n  }\n  if (!reqString(nextWeek, 'weekEnd', 'activityPlan.nextWeek') || !dateRe.test(nextWeek.weekEnd)) {\n    errors.push('activityPlan.nextWeek.weekEnd must be YYYY-MM-DD');\n  }\n}\n\nconst days = plan.activityPlan && plan.activityPlan.days;\nif (!Array.isArray(days)) {\n  errors.push('activityPlan.days must be array');\n} else if (days.length !== 7) {\n  errors.push('activityPlan.days must have length 7');\n} else {\n  days.forEach((day, idx) => {\n    const path = `activityPlan.days[${idx}]`;\n    if (!isObject(day)) {\n      errors.push(`${path} must be object`);\n      return;\n    }\n    if (!reqString(day, 'day', path) || !dayRe.test(day.day)) {\n      errors.push(`${path}.day must be a valid weekday`);\n    }\n    if (!reqString(day, 'date', path) || !dateRe.test(day.date)) {\n      errors.push(`${path}.date must be YYYY-MM-DD`);\n    }\n    reqString(day, 'activity', path);\n    reqString(day, 'distance_time', path);\n    if (!reqString(day, 'intensity', path) || !intensityRe.test(day.intensity)) {\n      errors.push(`${path}.intensity must include a zone/label or be '-'/'--'/'\u2014'`);\n    }\n    reqString(day, 'goal', path);\n  });\n}\n\n\n// Guardrails (hard rules)\nif (Array.isArray(days) && days.length === 7) {\n  const normalizeDay = (value) => (value || '')\n    .toLowerCase()\n    .replace(/[\u00e1\u00e0\u00e4]/g, 'a')\n    .replace(/[\u00e9\u00e8\u00eb]/g, 'e')\n    .replace(/[\u00ed\u00ec\u00ef]/g, 'i')\n    .replace(/[\u00f3\u00f2\u00f6]/g, 'o')\n    .replace(/[\u00fa\u00f9\u00fc]/g, 'u')\n    .replace(/\u00f1/g, 'n');\n  const activityText = (day) => `${day.activity || ''} ${day.goal || ''} ${day.note || ''}`.toLowerCase();\n  const intensityText = (day) => (day.intensity || '').toLowerCase();\n  const containsToken = (text, tokens) => tokens.some((token) => text.includes(token));\n\n  const hardTokens = ['z4', 'z5', 'vo2', 'interval', 'umbral', 'tempo', 'threshold'];\n  const easyTokens = ['z1', 'z2', 'easy', 'recovery', 'recuper', 'suave'];\n  const restTokens = ['descanso', 'rest', 'off'];\n  const longTokens = ['tirada', 'larga', 'long'];\n  const gymTokens = ['gimnasio', 'gym', 'fuerza', 'strength'];\n\n  const isHard = (day) => containsToken(intensityText(day), hardTokens) || containsToken(activityText(day), hardTokens);\n  const isEasy = (day) => containsToken(intensityText(day), easyTokens) || containsToken(activityText(day), easyTokens);\n  const isRest = (day) => containsToken(activityText(day), restTokens) || ['-', '--', '\u2014', '\u2013'].includes((day.intensity || '').trim());\n  const normalizedDays = days.map((day) => normalizeDay(day.day));\n  const uniqueDays = new Set(normalizedDays);\n  if (uniqueDays.size !== 7) {\n    errors.push('guardrail: days must cover all weekdays exactly once');\n  }\n  const requiredDays = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];\n  requiredDays.forEach((name) => {\n    if (!uniqueDays.has(name)) {\n      errors.push(`guardrail: missing weekday ${name}`);\n    }\n  });\n\n  const isLong = (day) => containsToken(activityText(day), longTokens);\n\n  const hardCount = days.filter(isHard).length;\n  if (hardCount > 2) {\n    errors.push(`guardrail: too many hard sessions (${hardCount} > 2)`);\n  }\n\n  for (let i = 1; i < days.length; i += 1) {\n    if (isHard(days[i]) && isHard(days[i - 1])) {\n      errors.push(`guardrail: back-to-back hard sessions (days ${i} and ${i + 1})`);\n    }\n  }\n\n  const hasRecovery = days.some((day) => isRest(day) || isEasy(day));\n  if (!hasRecovery) {\n    errors.push('guardrail: must include at least one rest or recovery day');\n  }\n\n  const longCount = days.filter(isLong).length;\n  if (longCount > 1) {\n    errors.push('guardrail: only one long run per week');\n  }\n\n  days.forEach((day, idx) => {\n    if (isLong(day) && isHard(day)) {\n      errors.push(`guardrail: long run cannot be hard intensity (day ${idx + 1})`);\n    }\n  });\n\n  const gymDays = ['martes', 'jueves', 'sabado'];\n  gymDays.forEach((name) => {\n    const day = days.find((d) => normalizeDay(d.day) === name);\n    if (day && !containsToken(activityText(day), gymTokens)) {\n      errors.push(`guardrail: ${name} should include gym/strength`);\n    }\n  });\n}\nconst valid = errors.length == 0;\n\nconst output = isObject(plan) ? JSON.parse(JSON.stringify(plan)) : {};\noutput.__valid = valid;\noutput.__errors = errors;\noutput.__attempt = attempt;\noutput.__raw = typeof raw === 'string' ? raw : JSON.stringify(raw);\n\nreturn [{ json: output }];\n"
       }
     },
     {
@@ -503,7 +503,7 @@
         620
       ],
       "parameters": {
-        "jsCode": "\nconst attempt = 1;\n\nconst raw = Array.isArray(items[0].json.choices)\n  ? items[0].json.choices[0].message.content\n  : items[0].json;\n\nlet parsed = raw;\nlet parseError = null;\n\nif (typeof raw === 'string') {\n  try {\n    parsed = JSON.parse(raw);\n  } catch (err) {\n    parseError = err && err.message ? err.message : String(err);\n    parsed = null;\n  }\n}\n\nconst errors = [];\n\nif (parseError) {\n  errors.push(`invalid_json: ${parseError}`);\n}\n\nconst isObject = value => value && typeof value === 'object' && !Array.isArray(value);\nconst plan = isObject(parsed) ? parsed : {};\n\nconst dateRe = /^\\d{4}-\\d{2}-\\d{2}$/;\nconst dayRe = /^(Lunes|Martes|Miercoles|Mi\\u00e9rcoles|Jueves|Viernes|Sabado|S\\u00e1bado|Domingo)$/;\nconst intensityRe = /^(?:-|--|\\u2014|.*\\b(Z[1-5]|interval|Interval|VO2|Tempo|tempo|Umbral|umbral|Threshold|threshold|Easy|easy|Recovery|recovery)\\b.*)$/;\n\nconst reqString = (obj, key, path) => {\n  const value = obj ? obj[key] : undefined;\n  if (typeof value !== 'string' || !value.trim()) {\n    errors.push(`${path}.${key} missing`);\n    return false;\n  }\n  return true;\n};\n\nif (plan.schema_version !== '1.0') {\n  errors.push('schema_version must be \"1.0\"');\n}\n\nif (!isObject(plan.activityPlan)) {\n  errors.push('activityPlan must be object');\n}\n\nconst nextWeek = plan.activityPlan && plan.activityPlan.nextWeek;\nif (!isObject(nextWeek)) {\n  errors.push('activityPlan.nextWeek must be object');\n} else {\n  reqString(nextWeek, 'phase', 'activityPlan.nextWeek');\n  reqString(nextWeek, 'objective', 'activityPlan.nextWeek');\n  if (!reqString(nextWeek, 'weekStart', 'activityPlan.nextWeek') || !dateRe.test(nextWeek.weekStart)) {\n    errors.push('activityPlan.nextWeek.weekStart must be YYYY-MM-DD');\n  }\n  if (!reqString(nextWeek, 'weekEnd', 'activityPlan.nextWeek') || !dateRe.test(nextWeek.weekEnd)) {\n    errors.push('activityPlan.nextWeek.weekEnd must be YYYY-MM-DD');\n  }\n}\n\nconst days = plan.activityPlan && plan.activityPlan.days;\nif (!Array.isArray(days)) {\n  errors.push('activityPlan.days must be array');\n} else if (days.length !== 7) {\n  errors.push('activityPlan.days must have length 7');\n} else {\n  days.forEach((day, idx) => {\n    const path = `activityPlan.days[${idx}]`;\n    if (!isObject(day)) {\n      errors.push(`${path} must be object`);\n      return;\n    }\n    if (!reqString(day, 'day', path) || !dayRe.test(day.day)) {\n      errors.push(`${path}.day must be a valid weekday`);\n    }\n    if (!reqString(day, 'date', path) || !dateRe.test(day.date)) {\n      errors.push(`${path}.date must be YYYY-MM-DD`);\n    }\n    reqString(day, 'activity', path);\n    reqString(day, 'distance_time', path);\n    if (!reqString(day, 'intensity', path) || !intensityRe.test(day.intensity)) {\n      errors.push(`${path}.intensity must include a zone/label or be '-'/'--'/'\u2014'`);\n    }\n    reqString(day, 'goal', path);\n  });\n}\n\n\n// Guardrails (hard rules)\nif (Array.isArray(days) && days.length === 7) {\n  const normalizeDay = (value) => (value || '')\n    .toLowerCase()\n    .replace(/[áàä]/g, 'a')\n    .replace(/[éèë]/g, 'e')\n    .replace(/[íìï]/g, 'i')\n    .replace(/[óòö]/g, 'o')\n    .replace(/[úùü]/g, 'u')\n    .replace(/ñ/g, 'n');\n  const activityText = (day) => `${day.activity || ''} ${day.goal || ''} ${day.note || ''}`.toLowerCase();\n  const intensityText = (day) => (day.intensity || '').toLowerCase();\n  const containsToken = (text, tokens) => tokens.some((token) => text.includes(token));\n\n  const hardTokens = ['z4', 'z5', 'vo2', 'interval', 'umbral', 'tempo', 'threshold'];\n  const easyTokens = ['z1', 'z2', 'easy', 'recovery', 'recuper', 'suave'];\n  const restTokens = ['descanso', 'rest', 'off'];\n  const longTokens = ['tirada', 'larga', 'long'];\n  const gymTokens = ['gimnasio', 'gym', 'fuerza', 'strength'];\n\n  const isHard = (day) => containsToken(intensityText(day), hardTokens) || containsToken(activityText(day), hardTokens);\n  const isEasy = (day) => containsToken(intensityText(day), easyTokens) || containsToken(activityText(day), easyTokens);\n  const isRest = (day) => containsToken(activityText(day), restTokens) || ['-', '--', '—', '–'].includes((day.intensity || '').trim());\n  const normalizedDays = days.map((day) => normalizeDay(day.day));\n  const uniqueDays = new Set(normalizedDays);\n  if (uniqueDays.size !== 7) {\n    errors.push('guardrail: days must cover all weekdays exactly once');\n  }\n  const requiredDays = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];\n  requiredDays.forEach((name) => {\n    if (!uniqueDays.has(name)) {\n      errors.push(`guardrail: missing weekday ${name}`);\n    }\n  });\n\n  const isLong = (day) => containsToken(activityText(day), longTokens);\n\n  const hardCount = days.filter(isHard).length;\n  if (hardCount > 2) {\n    errors.push(`guardrail: too many hard sessions (${hardCount} > 2)`);\n  }\n\n  for (let i = 1; i < days.length; i += 1) {\n    if (isHard(days[i]) && isHard(days[i - 1])) {\n      errors.push(`guardrail: back-to-back hard sessions (days ${i} and ${i + 1})`);\n    }\n  }\n\n  const hasRecovery = days.some((day) => isRest(day) || isEasy(day));\n  if (!hasRecovery) {\n    errors.push('guardrail: must include at least one rest or recovery day');\n  }\n\n  const longCount = days.filter(isLong).length;\n  if (longCount > 1) {\n    errors.push('guardrail: only one long run per week');\n  }\n\n  days.forEach((day, idx) => {\n    if (isLong(day) && isHard(day)) {\n      errors.push(`guardrail: long run cannot be hard intensity (day ${idx + 1})`);\n    }\n  });\n\n  const gymDays = ['martes', 'jueves', 'sabado'];\n  gymDays.forEach((name) => {\n    const day = days.find((d) => normalizeDay(d.day) === name);\n    if (day && !containsToken(activityText(day), gymTokens)) {\n      errors.push(`guardrail: ${name} should include gym/strength`);\n    }\n  });\n}\nconst valid = errors.length == 0;\n\nconst output = isObject(plan) ? JSON.parse(JSON.stringify(plan)) : {};\noutput.__valid = valid;\noutput.__errors = errors;\noutput.__attempt = attempt;\noutput.__raw = typeof raw === 'string' ? raw : JSON.stringify(raw);\n\nreturn [{ json: output }];\n"
+        "jsCode": "\nconst attempt = 1;\n\nconst raw = Array.isArray(items[0].json.choices)\n  ? items[0].json.choices[0].message.content\n  : items[0].json;\n\nlet parsed = raw;\nlet parseError = null;\n\nif (typeof raw === 'string') {\n  try {\n    parsed = JSON.parse(raw);\n  } catch (err) {\n    parseError = err && err.message ? err.message : String(err);\n    parsed = null;\n  }\n}\n\nconst errors = [];\n\nif (parseError) {\n  errors.push(`invalid_json: ${parseError}`);\n}\n\nconst isObject = value => value && typeof value === 'object' && !Array.isArray(value);\nconst plan = isObject(parsed) ? parsed : {};\n\nconst dateRe = /^\\d{4}-\\d{2}-\\d{2}$/;\nconst dayRe = /^(Lunes|Martes|Miercoles|Mi\\u00e9rcoles|Jueves|Viernes|Sabado|S\\u00e1bado|Domingo)$/;\nconst intensityRe = /^(?:-|--|\\u2014|.*\\b(Z[1-5]|interval|Interval|VO2|Tempo|tempo|Umbral|umbral|Threshold|threshold|Easy|easy|Recovery|recovery)\\b.*)$/;\n\nconst reqString = (obj, key, path) => {\n  const value = obj ? obj[key] : undefined;\n  if (typeof value !== 'string' || !value.trim()) {\n    errors.push(`${path}.${key} missing`);\n    return false;\n  }\n  return true;\n};\n\nif (plan.schema_version !== '1.0') {\n  errors.push('schema_version must be \"1.0\"');\n}\n\nif (!isObject(plan.activityPlan)) {\n  errors.push('activityPlan must be object');\n}\n\nconst nextWeek = plan.activityPlan && plan.activityPlan.nextWeek;\nif (!isObject(nextWeek)) {\n  errors.push('activityPlan.nextWeek must be object');\n} else {\n  reqString(nextWeek, 'phase', 'activityPlan.nextWeek');\n  reqString(nextWeek, 'objective', 'activityPlan.nextWeek');\n  if (!reqString(nextWeek, 'weekStart', 'activityPlan.nextWeek') || !dateRe.test(nextWeek.weekStart)) {\n    errors.push('activityPlan.nextWeek.weekStart must be YYYY-MM-DD');\n  }\n  if (!reqString(nextWeek, 'weekEnd', 'activityPlan.nextWeek') || !dateRe.test(nextWeek.weekEnd)) {\n    errors.push('activityPlan.nextWeek.weekEnd must be YYYY-MM-DD');\n  }\n}\n\nconst days = plan.activityPlan && plan.activityPlan.days;\nif (!Array.isArray(days)) {\n  errors.push('activityPlan.days must be array');\n} else if (days.length !== 7) {\n  errors.push('activityPlan.days must have length 7');\n} else {\n  days.forEach((day, idx) => {\n    const path = `activityPlan.days[${idx}]`;\n    if (!isObject(day)) {\n      errors.push(`${path} must be object`);\n      return;\n    }\n    if (!reqString(day, 'day', path) || !dayRe.test(day.day)) {\n      errors.push(`${path}.day must be a valid weekday`);\n    }\n    if (!reqString(day, 'date', path) || !dateRe.test(day.date)) {\n      errors.push(`${path}.date must be YYYY-MM-DD`);\n    }\n    reqString(day, 'activity', path);\n    reqString(day, 'distance_time', path);\n    if (!reqString(day, 'intensity', path) || !intensityRe.test(day.intensity)) {\n      errors.push(`${path}.intensity must include a zone/label or be '-'/'--'/'\u2014'`);\n    }\n    reqString(day, 'goal', path);\n  });\n}\n\n\n// Guardrails (hard rules)\nif (Array.isArray(days) && days.length === 7) {\n  const normalizeDay = (value) => (value || '')\n    .toLowerCase()\n    .replace(/[\u00e1\u00e0\u00e4]/g, 'a')\n    .replace(/[\u00e9\u00e8\u00eb]/g, 'e')\n    .replace(/[\u00ed\u00ec\u00ef]/g, 'i')\n    .replace(/[\u00f3\u00f2\u00f6]/g, 'o')\n    .replace(/[\u00fa\u00f9\u00fc]/g, 'u')\n    .replace(/\u00f1/g, 'n');\n  const activityText = (day) => `${day.activity || ''} ${day.goal || ''} ${day.note || ''}`.toLowerCase();\n  const intensityText = (day) => (day.intensity || '').toLowerCase();\n  const containsToken = (text, tokens) => tokens.some((token) => text.includes(token));\n\n  const hardTokens = ['z4', 'z5', 'vo2', 'interval', 'umbral', 'tempo', 'threshold'];\n  const easyTokens = ['z1', 'z2', 'easy', 'recovery', 'recuper', 'suave'];\n  const restTokens = ['descanso', 'rest', 'off'];\n  const longTokens = ['tirada', 'larga', 'long'];\n  const gymTokens = ['gimnasio', 'gym', 'fuerza', 'strength'];\n\n  const isHard = (day) => containsToken(intensityText(day), hardTokens) || containsToken(activityText(day), hardTokens);\n  const isEasy = (day) => containsToken(intensityText(day), easyTokens) || containsToken(activityText(day), easyTokens);\n  const isRest = (day) => containsToken(activityText(day), restTokens) || ['-', '--', '\u2014', '\u2013'].includes((day.intensity || '').trim());\n  const normalizedDays = days.map((day) => normalizeDay(day.day));\n  const uniqueDays = new Set(normalizedDays);\n  if (uniqueDays.size !== 7) {\n    errors.push('guardrail: days must cover all weekdays exactly once');\n  }\n  const requiredDays = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];\n  requiredDays.forEach((name) => {\n    if (!uniqueDays.has(name)) {\n      errors.push(`guardrail: missing weekday ${name}`);\n    }\n  });\n\n  const isLong = (day) => containsToken(activityText(day), longTokens);\n\n  const hardCount = days.filter(isHard).length;\n  if (hardCount > 2) {\n    errors.push(`guardrail: too many hard sessions (${hardCount} > 2)`);\n  }\n\n  for (let i = 1; i < days.length; i += 1) {\n    if (isHard(days[i]) && isHard(days[i - 1])) {\n      errors.push(`guardrail: back-to-back hard sessions (days ${i} and ${i + 1})`);\n    }\n  }\n\n  const hasRecovery = days.some((day) => isRest(day) || isEasy(day));\n  if (!hasRecovery) {\n    errors.push('guardrail: must include at least one rest or recovery day');\n  }\n\n  const longCount = days.filter(isLong).length;\n  if (longCount > 1) {\n    errors.push('guardrail: only one long run per week');\n  }\n\n  days.forEach((day, idx) => {\n    if (isLong(day) && isHard(day)) {\n      errors.push(`guardrail: long run cannot be hard intensity (day ${idx + 1})`);\n    }\n  });\n\n  const gymDays = ['martes', 'jueves', 'sabado'];\n  gymDays.forEach((name) => {\n    const day = days.find((d) => normalizeDay(d.day) === name);\n    if (day && !containsToken(activityText(day), gymTokens)) {\n      errors.push(`guardrail: ${name} should include gym/strength`);\n    }\n  });\n}\nconst valid = errors.length == 0;\n\nconst output = isObject(plan) ? JSON.parse(JSON.stringify(plan)) : {};\noutput.__valid = valid;\noutput.__errors = errors;\noutput.__attempt = attempt;\noutput.__raw = typeof raw === 'string' ? raw : JSON.stringify(raw);\n\nreturn [{ json: output }];\n"
       }
     },
     {
@@ -590,7 +590,7 @@
         800
       ],
       "parameters": {
-        "jsCode": "\nconst attempt = 2;\n\nconst raw = Array.isArray(items[0].json.choices)\n  ? items[0].json.choices[0].message.content\n  : items[0].json;\n\nlet parsed = raw;\nlet parseError = null;\n\nif (typeof raw === 'string') {\n  try {\n    parsed = JSON.parse(raw);\n  } catch (err) {\n    parseError = err && err.message ? err.message : String(err);\n    parsed = null;\n  }\n}\n\nconst errors = [];\n\nif (parseError) {\n  errors.push(`invalid_json: ${parseError}`);\n}\n\nconst isObject = value => value && typeof value === 'object' && !Array.isArray(value);\nconst plan = isObject(parsed) ? parsed : {};\n\nconst dateRe = /^\\d{4}-\\d{2}-\\d{2}$/;\nconst dayRe = /^(Lunes|Martes|Miercoles|Mi\\u00e9rcoles|Jueves|Viernes|Sabado|S\\u00e1bado|Domingo)$/;\nconst intensityRe = /^(?:-|--|\\u2014|.*\\b(Z[1-5]|interval|Interval|VO2|Tempo|tempo|Umbral|umbral|Threshold|threshold|Easy|easy|Recovery|recovery)\\b.*)$/;\n\nconst reqString = (obj, key, path) => {\n  const value = obj ? obj[key] : undefined;\n  if (typeof value !== 'string' || !value.trim()) {\n    errors.push(`${path}.${key} missing`);\n    return false;\n  }\n  return true;\n};\n\nif (plan.schema_version !== '1.0') {\n  errors.push('schema_version must be \"1.0\"');\n}\n\nif (!isObject(plan.activityPlan)) {\n  errors.push('activityPlan must be object');\n}\n\nconst nextWeek = plan.activityPlan && plan.activityPlan.nextWeek;\nif (!isObject(nextWeek)) {\n  errors.push('activityPlan.nextWeek must be object');\n} else {\n  reqString(nextWeek, 'phase', 'activityPlan.nextWeek');\n  reqString(nextWeek, 'objective', 'activityPlan.nextWeek');\n  if (!reqString(nextWeek, 'weekStart', 'activityPlan.nextWeek') || !dateRe.test(nextWeek.weekStart)) {\n    errors.push('activityPlan.nextWeek.weekStart must be YYYY-MM-DD');\n  }\n  if (!reqString(nextWeek, 'weekEnd', 'activityPlan.nextWeek') || !dateRe.test(nextWeek.weekEnd)) {\n    errors.push('activityPlan.nextWeek.weekEnd must be YYYY-MM-DD');\n  }\n}\n\nconst days = plan.activityPlan && plan.activityPlan.days;\nif (!Array.isArray(days)) {\n  errors.push('activityPlan.days must be array');\n} else if (days.length !== 7) {\n  errors.push('activityPlan.days must have length 7');\n} else {\n  days.forEach((day, idx) => {\n    const path = `activityPlan.days[${idx}]`;\n    if (!isObject(day)) {\n      errors.push(`${path} must be object`);\n      return;\n    }\n    if (!reqString(day, 'day', path) || !dayRe.test(day.day)) {\n      errors.push(`${path}.day must be a valid weekday`);\n    }\n    if (!reqString(day, 'date', path) || !dateRe.test(day.date)) {\n      errors.push(`${path}.date must be YYYY-MM-DD`);\n    }\n    reqString(day, 'activity', path);\n    reqString(day, 'distance_time', path);\n    if (!reqString(day, 'intensity', path) || !intensityRe.test(day.intensity)) {\n      errors.push(`${path}.intensity must include a zone/label or be '-'/'--'/'\u2014'`);\n    }\n    reqString(day, 'goal', path);\n  });\n}\n\n\n// Guardrails (hard rules)\nif (Array.isArray(days) && days.length === 7) {\n  const normalizeDay = (value) => (value || '')\n    .toLowerCase()\n    .replace(/[áàä]/g, 'a')\n    .replace(/[éèë]/g, 'e')\n    .replace(/[íìï]/g, 'i')\n    .replace(/[óòö]/g, 'o')\n    .replace(/[úùü]/g, 'u')\n    .replace(/ñ/g, 'n');\n  const activityText = (day) => `${day.activity || ''} ${day.goal || ''} ${day.note || ''}`.toLowerCase();\n  const intensityText = (day) => (day.intensity || '').toLowerCase();\n  const containsToken = (text, tokens) => tokens.some((token) => text.includes(token));\n\n  const hardTokens = ['z4', 'z5', 'vo2', 'interval', 'umbral', 'tempo', 'threshold'];\n  const easyTokens = ['z1', 'z2', 'easy', 'recovery', 'recuper', 'suave'];\n  const restTokens = ['descanso', 'rest', 'off'];\n  const longTokens = ['tirada', 'larga', 'long'];\n  const gymTokens = ['gimnasio', 'gym', 'fuerza', 'strength'];\n\n  const isHard = (day) => containsToken(intensityText(day), hardTokens) || containsToken(activityText(day), hardTokens);\n  const isEasy = (day) => containsToken(intensityText(day), easyTokens) || containsToken(activityText(day), easyTokens);\n  const isRest = (day) => containsToken(activityText(day), restTokens) || ['-', '--', '—', '–'].includes((day.intensity || '').trim());\n  const normalizedDays = days.map((day) => normalizeDay(day.day));\n  const uniqueDays = new Set(normalizedDays);\n  if (uniqueDays.size !== 7) {\n    errors.push('guardrail: days must cover all weekdays exactly once');\n  }\n  const requiredDays = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];\n  requiredDays.forEach((name) => {\n    if (!uniqueDays.has(name)) {\n      errors.push(`guardrail: missing weekday ${name}`);\n    }\n  });\n\n  const isLong = (day) => containsToken(activityText(day), longTokens);\n\n  const hardCount = days.filter(isHard).length;\n  if (hardCount > 2) {\n    errors.push(`guardrail: too many hard sessions (${hardCount} > 2)`);\n  }\n\n  for (let i = 1; i < days.length; i += 1) {\n    if (isHard(days[i]) && isHard(days[i - 1])) {\n      errors.push(`guardrail: back-to-back hard sessions (days ${i} and ${i + 1})`);\n    }\n  }\n\n  const hasRecovery = days.some((day) => isRest(day) || isEasy(day));\n  if (!hasRecovery) {\n    errors.push('guardrail: must include at least one rest or recovery day');\n  }\n\n  const longCount = days.filter(isLong).length;\n  if (longCount > 1) {\n    errors.push('guardrail: only one long run per week');\n  }\n\n  days.forEach((day, idx) => {\n    if (isLong(day) && isHard(day)) {\n      errors.push(`guardrail: long run cannot be hard intensity (day ${idx + 1})`);\n    }\n  });\n\n  const gymDays = ['martes', 'jueves', 'sabado'];\n  gymDays.forEach((name) => {\n    const day = days.find((d) => normalizeDay(d.day) === name);\n    if (day && !containsToken(activityText(day), gymTokens)) {\n      errors.push(`guardrail: ${name} should include gym/strength`);\n    }\n  });\n}\nconst valid = errors.length == 0;\n\nconst output = isObject(plan) ? JSON.parse(JSON.stringify(plan)) : {};\noutput.__valid = valid;\noutput.__errors = errors;\noutput.__attempt = attempt;\noutput.__raw = typeof raw === 'string' ? raw : JSON.stringify(raw);\n\nreturn [{ json: output }];\n"
+        "jsCode": "\nconst attempt = 2;\n\nconst raw = Array.isArray(items[0].json.choices)\n  ? items[0].json.choices[0].message.content\n  : items[0].json;\n\nlet parsed = raw;\nlet parseError = null;\n\nif (typeof raw === 'string') {\n  try {\n    parsed = JSON.parse(raw);\n  } catch (err) {\n    parseError = err && err.message ? err.message : String(err);\n    parsed = null;\n  }\n}\n\nconst errors = [];\n\nif (parseError) {\n  errors.push(`invalid_json: ${parseError}`);\n}\n\nconst isObject = value => value && typeof value === 'object' && !Array.isArray(value);\nconst plan = isObject(parsed) ? parsed : {};\n\nconst dateRe = /^\\d{4}-\\d{2}-\\d{2}$/;\nconst dayRe = /^(Lunes|Martes|Miercoles|Mi\\u00e9rcoles|Jueves|Viernes|Sabado|S\\u00e1bado|Domingo)$/;\nconst intensityRe = /^(?:-|--|\\u2014|.*\\b(Z[1-5]|interval|Interval|VO2|Tempo|tempo|Umbral|umbral|Threshold|threshold|Easy|easy|Recovery|recovery)\\b.*)$/;\n\nconst reqString = (obj, key, path) => {\n  const value = obj ? obj[key] : undefined;\n  if (typeof value !== 'string' || !value.trim()) {\n    errors.push(`${path}.${key} missing`);\n    return false;\n  }\n  return true;\n};\n\nif (plan.schema_version !== '1.0') {\n  errors.push('schema_version must be \"1.0\"');\n}\n\nif (!isObject(plan.activityPlan)) {\n  errors.push('activityPlan must be object');\n}\n\nconst nextWeek = plan.activityPlan && plan.activityPlan.nextWeek;\nif (!isObject(nextWeek)) {\n  errors.push('activityPlan.nextWeek must be object');\n} else {\n  reqString(nextWeek, 'phase', 'activityPlan.nextWeek');\n  reqString(nextWeek, 'objective', 'activityPlan.nextWeek');\n  if (!reqString(nextWeek, 'weekStart', 'activityPlan.nextWeek') || !dateRe.test(nextWeek.weekStart)) {\n    errors.push('activityPlan.nextWeek.weekStart must be YYYY-MM-DD');\n  }\n  if (!reqString(nextWeek, 'weekEnd', 'activityPlan.nextWeek') || !dateRe.test(nextWeek.weekEnd)) {\n    errors.push('activityPlan.nextWeek.weekEnd must be YYYY-MM-DD');\n  }\n}\n\nconst days = plan.activityPlan && plan.activityPlan.days;\nif (!Array.isArray(days)) {\n  errors.push('activityPlan.days must be array');\n} else if (days.length !== 7) {\n  errors.push('activityPlan.days must have length 7');\n} else {\n  days.forEach((day, idx) => {\n    const path = `activityPlan.days[${idx}]`;\n    if (!isObject(day)) {\n      errors.push(`${path} must be object`);\n      return;\n    }\n    if (!reqString(day, 'day', path) || !dayRe.test(day.day)) {\n      errors.push(`${path}.day must be a valid weekday`);\n    }\n    if (!reqString(day, 'date', path) || !dateRe.test(day.date)) {\n      errors.push(`${path}.date must be YYYY-MM-DD`);\n    }\n    reqString(day, 'activity', path);\n    reqString(day, 'distance_time', path);\n    if (!reqString(day, 'intensity', path) || !intensityRe.test(day.intensity)) {\n      errors.push(`${path}.intensity must include a zone/label or be '-'/'--'/'\u2014'`);\n    }\n    reqString(day, 'goal', path);\n  });\n}\n\n\n// Guardrails (hard rules)\nif (Array.isArray(days) && days.length === 7) {\n  const normalizeDay = (value) => (value || '')\n    .toLowerCase()\n    .replace(/[\u00e1\u00e0\u00e4]/g, 'a')\n    .replace(/[\u00e9\u00e8\u00eb]/g, 'e')\n    .replace(/[\u00ed\u00ec\u00ef]/g, 'i')\n    .replace(/[\u00f3\u00f2\u00f6]/g, 'o')\n    .replace(/[\u00fa\u00f9\u00fc]/g, 'u')\n    .replace(/\u00f1/g, 'n');\n  const activityText = (day) => `${day.activity || ''} ${day.goal || ''} ${day.note || ''}`.toLowerCase();\n  const intensityText = (day) => (day.intensity || '').toLowerCase();\n  const containsToken = (text, tokens) => tokens.some((token) => text.includes(token));\n\n  const hardTokens = ['z4', 'z5', 'vo2', 'interval', 'umbral', 'tempo', 'threshold'];\n  const easyTokens = ['z1', 'z2', 'easy', 'recovery', 'recuper', 'suave'];\n  const restTokens = ['descanso', 'rest', 'off'];\n  const longTokens = ['tirada', 'larga', 'long'];\n  const gymTokens = ['gimnasio', 'gym', 'fuerza', 'strength'];\n\n  const isHard = (day) => containsToken(intensityText(day), hardTokens) || containsToken(activityText(day), hardTokens);\n  const isEasy = (day) => containsToken(intensityText(day), easyTokens) || containsToken(activityText(day), easyTokens);\n  const isRest = (day) => containsToken(activityText(day), restTokens) || ['-', '--', '\u2014', '\u2013'].includes((day.intensity || '').trim());\n  const normalizedDays = days.map((day) => normalizeDay(day.day));\n  const uniqueDays = new Set(normalizedDays);\n  if (uniqueDays.size !== 7) {\n    errors.push('guardrail: days must cover all weekdays exactly once');\n  }\n  const requiredDays = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];\n  requiredDays.forEach((name) => {\n    if (!uniqueDays.has(name)) {\n      errors.push(`guardrail: missing weekday ${name}`);\n    }\n  });\n\n  const isLong = (day) => containsToken(activityText(day), longTokens);\n\n  const hardCount = days.filter(isHard).length;\n  if (hardCount > 2) {\n    errors.push(`guardrail: too many hard sessions (${hardCount} > 2)`);\n  }\n\n  for (let i = 1; i < days.length; i += 1) {\n    if (isHard(days[i]) && isHard(days[i - 1])) {\n      errors.push(`guardrail: back-to-back hard sessions (days ${i} and ${i + 1})`);\n    }\n  }\n\n  const hasRecovery = days.some((day) => isRest(day) || isEasy(day));\n  if (!hasRecovery) {\n    errors.push('guardrail: must include at least one rest or recovery day');\n  }\n\n  const longCount = days.filter(isLong).length;\n  if (longCount > 1) {\n    errors.push('guardrail: only one long run per week');\n  }\n\n  days.forEach((day, idx) => {\n    if (isLong(day) && isHard(day)) {\n      errors.push(`guardrail: long run cannot be hard intensity (day ${idx + 1})`);\n    }\n  });\n\n  const gymDays = ['martes', 'jueves', 'sabado'];\n  gymDays.forEach((name) => {\n    const day = days.find((d) => normalizeDay(d.day) === name);\n    if (day && !containsToken(activityText(day), gymTokens)) {\n      errors.push(`guardrail: ${name} should include gym/strength`);\n    }\n  });\n}\nconst valid = errors.length == 0;\n\nconst output = isObject(plan) ? JSON.parse(JSON.stringify(plan)) : {};\noutput.__valid = valid;\noutput.__errors = errors;\noutput.__attempt = attempt;\noutput.__raw = typeof raw === 'string' ? raw : JSON.stringify(raw);\n\nreturn [{ json: output }];\n"
       }
     },
     {
@@ -624,6 +624,110 @@
       ],
       "parameters": {
         "jsCode": "throw new Error('Fallback required after max repair attempts.');"
+      }
+    },
+    {
+      "id": "1a5427aa-0afa-409b-bbda-2c0808182bbf",
+      "name": "Build Run Event (success)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1268,
+        328
+      ],
+      "parameters": {
+        "jsCode": "const content = items[0].json || {};\nconst plan = content.activityPlan || {};\nconst nextWeek = plan.nextWeek || {};\n\nconst runId = `${new Date().toISOString()}-${Math.random().toString(36).slice(2, 8)}`;\nconst errors = Array.isArray(content.__errors) ? content.__errors : [];\n\nconst runEvent = {\n  runId,\n  status: 'success',\n  attempt: content.__attempt ?? null,\n  weekStart: nextWeek.weekStart || null,\n  weekEnd: nextWeek.weekEnd || null,\n  errorCount: errors.length,\n  errors,\n  createdAt: new Date().toISOString()\n};\n\nreturn [{\n  json: Object.assign({}, content, runEvent, { runEvent })\n}];\n"
+      }
+    },
+    {
+      "id": "76a0bc8d-962a-4fb4-adbd-f5968b5b83eb",
+      "name": "Run Events DB (success)",
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.2,
+      "position": [
+        1588,
+        328
+      ],
+      "alwaysOutputData": true,
+      "parameters": {
+        "operation": "findOneAndUpdate",
+        "collection": "run_events",
+        "updateKey": "runId",
+        "fields": "runId, status, attempt, weekStart, weekEnd, errorCount, errors, createdAt",
+        "upsert": true,
+        "options": {
+          "dateFields": "createdAt"
+        }
+      },
+      "credentials": {
+        "mongoDb": {
+          "id": "8KyRHmD3ScRn2PPF",
+          "name": "MongoDB account"
+        }
+      }
+    },
+    {
+      "id": "92307575-ea91-4bac-b23a-1860c54c24c9",
+      "name": "Build Failure Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        980
+      ],
+      "parameters": {
+        "jsCode": "const content = items[0].json || {};\nconst plan = content.activityPlan || {};\nconst nextWeek = plan.nextWeek || {};\n\nconst runId = `${new Date().toISOString()}-${Math.random().toString(36).slice(2, 8)}`;\nconst errors = Array.isArray(content.__errors) ? content.__errors : ['validation failed'];\n\nconst runEvent = {\n  runId,\n  status: 'failure',\n  attempt: content.__attempt ?? null,\n  weekStart: nextWeek.weekStart || null,\n  weekEnd: nextWeek.weekEnd || null,\n  errorCount: errors.length,\n  errors,\n  createdAt: new Date().toISOString()\n};\n\nconst alertMessage = [\n  '\u26a0\ufe0f Running Coach workflow failed',\n  `Run: ${runId}`,\n  `Errors (${errors.length}):`,\n  ...errors.map(err => `- ${err}`)\n].join('\n');\n\nreturn [{\n  json: Object.assign({}, runEvent, { runEvent, alertMessage })\n}];\n"
+      }
+    },
+    {
+      "id": "57d9052d-75a5-468d-a5f8-e61dbd8f7f91",
+      "name": "Run Events DB (failure)",
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.2,
+      "position": [
+        2480,
+        980
+      ],
+      "alwaysOutputData": true,
+      "parameters": {
+        "operation": "findOneAndUpdate",
+        "collection": "run_events",
+        "updateKey": "runId",
+        "fields": "runId, status, attempt, weekStart, weekEnd, errorCount, errors, createdAt",
+        "upsert": true,
+        "options": {
+          "dateFields": "createdAt"
+        }
+      },
+      "credentials": {
+        "mongoDb": {
+          "id": "8KyRHmD3ScRn2PPF",
+          "name": "MongoDB account"
+        }
+      }
+    },
+    {
+      "id": "e0eb79f9-5da4-43bb-a51f-230f787624fd",
+      "name": "Send Failure Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2720,
+        980
+      ],
+      "parameters": {
+        "chatId": "730354404",
+        "text": "={{ $json.alertMessage }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "webhookId": "ae55f720-070b-42e2-b07e-f202cb99ced4",
+      "credentials": {
+        "telegramApi": {
+          "id": "hdQmaYn1B2efrJvB",
+          "name": "Telegram account"
+        }
       }
     }
   ],
@@ -813,7 +917,7 @@
       "main": [
         [
           {
-            "node": "Send a text message",
+            "node": "Run Events DB (success)",
             "type": "main",
             "index": 0
           }
@@ -975,14 +1079,14 @@
       "main": [
         [
           {
-            "node": "Build Telegram Message",
+            "node": "Build Run Event (success)",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Fallback Trigger",
+            "node": "Build Failure Event",
             "type": "main",
             "index": 0
           }
@@ -991,6 +1095,61 @@
     },
     "Fallback Trigger": {
       "main": []
+    },
+    "Build Run Event (success)": {
+      "main": [
+        [
+          {
+            "node": "Build Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Events DB (success)": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Failure Event": {
+      "main": [
+        [
+          {
+            "node": "Run Events DB (failure)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Events DB (failure)": {
+      "main": [
+        [
+          {
+            "node": "Send Failure Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Failure Alert": {
+      "main": [
+        [
+          {
+            "node": "Fallback Trigger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": true,
