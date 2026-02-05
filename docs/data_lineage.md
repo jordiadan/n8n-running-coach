@@ -69,7 +69,6 @@ Notes:
 
 Recommended indexes for `run_events`:
 - Unique: `{ runId: 1 }`
-- Time-based lookup: `{ createdAt: -1 }`
 - Status filter: `{ status: 1, createdAt: -1 }`
 - TTL: `{ createdAt: 1 }` (90 days)
 
@@ -79,7 +78,6 @@ Recommended indexes for `weekly_metrics`:
 
 Recommended indexes for `plan_snapshots`:
 - Unique: `{ runId: 1 }`
-- Time-based lookup: `{ createdAt: -1 }`
 - Week lookups: `{ weekStart: 1 }`
 - TTL: `{ createdAt: 1 }` (365 days)
 
