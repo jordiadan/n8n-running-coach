@@ -1,0 +1,76 @@
+{
+  "activityPlan": {
+    "days": [
+      {
+        "activity": "Easy run",
+        "date": "2025-10-13",
+        "day": "Lunes",
+        "distance_time": "40 min",
+        "goal": "Recuperacion",
+        "intensity": "Z2 (118-138 bpm)",
+        "note": "Movilidad + foam roller"
+      },
+      {
+        "activity": "Gimnasio",
+        "date": "2025-10-14",
+        "day": "Martes",
+        "distance_time": "60 min",
+        "goal": "Fuerza (Pecho y brazos)",
+        "intensity": "-"
+      },
+      {
+        "activity": "VO2 max",
+        "date": "2025-10-15",
+        "day": "Miercoles",
+        "distance_time": "4x3 min",
+        "goal": "Potencia aerobica",
+        "intensity": "Z4-Z5 (168-188 bpm)"
+      },
+      {
+        "activity": "Gimnasio",
+        "date": "2025-10-16",
+        "day": "Jueves",
+        "distance_time": "60 min",
+        "goal": "Fuerza (Espalda y hombros)",
+        "intensity": "-"
+      },
+      {
+        "activity": "Tempo / Umbral",
+        "date": "2025-10-17",
+        "day": "Viernes",
+        "distance_time": "30 min",
+        "goal": "Tolerancia lactato",
+        "intensity": "Z3-Z4 (155-174 bpm)"
+      },
+      {
+        "activity": "Gimnasio",
+        "date": "2025-10-18",
+        "day": "Sabado",
+        "distance_time": "60 min",
+        "goal": "Fuerza (Piernas)",
+        "intensity": "-"
+      },
+      {
+        "activity": "Long run",
+        "date": "2025-10-19",
+        "day": "Domingo",
+        "distance_time": "75 min",
+        "goal": "Base aerobica progresiva",
+        "intensity": "Z2 (118-138 bpm)",
+        "note": "Ultimos 10 min a Z3"
+      }
+    ],
+    "nextWeek": {
+      "objective": "Consolidar base aerobica",
+      "phase": "Desarrollo",
+      "weekEnd": "2025-10-19",
+      "weekStart": "2025-10-13"
+    }
+  },
+  "justification": [
+    "Carga coherente con ATL y HRV recientes",
+    "VO2 y tempo separados por >=48h",
+    "Long run progresivo para consolidar CTL"
+  ],
+  "schema_version": "1.0"
+}
