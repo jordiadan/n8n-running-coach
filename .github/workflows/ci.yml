@@ -11,6 +11,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  quality-checks:
+    name: Quality Checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dev dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Schema tests
+        run: python tests/schema_test.py
+
+      - name: Evaluation harness
+        run: python tests/eval_harness.py --summary "$GITHUB_STEP_SUMMARY"
+
   integration-tests:
     name: Integration Tests
     runs-on: ubuntu-24.04
