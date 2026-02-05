@@ -212,9 +212,53 @@ jobs:
           remote_hash = hashlib.sha256(canonical(remote)).hexdigest()
 
           if local_hash != remote_hash:
+              def node_map(nodes):
+                  mapped = {}
+                  for node in nodes:
+                      if isinstance(node, dict):
+                          name = node.get("name")
+                          if name:
+                              mapped[name] = node
+                  return mapped
+
+              def node_hashes(nodes):
+                  hashes = {}
+                  for name, node in node_map(nodes).items():
+                      hashes[name] = hashlib.sha256(canonical(node)).hexdigest()
+                  return hashes
+
+              local_nodes = local.get("nodes", [])
+              remote_nodes = remote.get("nodes", [])
+              local_node_hashes = node_hashes(local_nodes)
+              remote_node_hashes = node_hashes(remote_nodes)
+
+              settings_hash = hashlib.sha256(canonical(local.get("settings", {}))).hexdigest()
+              remote_settings_hash = hashlib.sha256(canonical(remote.get("settings", {}))).hexdigest()
+              connections_hash = hashlib.sha256(canonical(local.get("connections", {}))).hexdigest()
+              remote_connections_hash = hashlib.sha256(canonical(remote.get("connections", {}))).hexdigest()
+
               print("❌ Workflow verification failed")
               print(f"local_hash={local_hash}")
               print(f"remote_hash={remote_hash}")
+              print(f"local_nodes_hash={hashlib.sha256(canonical(local_nodes)).hexdigest()}")
+              print(f"remote_nodes_hash={hashlib.sha256(canonical(remote_nodes)).hexdigest()}")
+              print(f"local_connections_hash={connections_hash}")
+              print(f"remote_connections_hash={remote_connections_hash}")
+              print(f"local_settings_hash={settings_hash}")
+              print(f"remote_settings_hash={remote_settings_hash}")
+
+              mismatched = []
+              for name in sorted(set(local_node_hashes) | set(remote_node_hashes)):
+                  if local_node_hashes.get(name) != remote_node_hashes.get(name):
+                      mismatched.append(name)
+              if mismatched:
+                  print("Mismatched nodes (up to 10):")
+                  for name in mismatched[:10]:
+                      local_node = node_map(local_nodes).get(name, {})
+                      remote_node = node_map(remote_nodes).get(name, {})
+                      local_keys = sorted(local_node.keys())
+                      remote_keys = sorted(remote_node.keys())
+                      print(f"- {name}: local_keys={local_keys} remote_keys={remote_keys}")
               raise SystemExit(1)
 
           print("✅ Workflow verification succeeded")
