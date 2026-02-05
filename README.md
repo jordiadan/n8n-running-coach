@@ -199,6 +199,7 @@ For complete rules, see:
 - At least one rest or recovery day.
 - Only one long run; long run cannot be hard intensity.
 - Gym/strength work is expected on Tuesday, Thursday, and Saturday.
+- Evaluation harness checks schema + guardrails + diversity + limits on fixtures in CI.
 
 ## Security Considerations
 
