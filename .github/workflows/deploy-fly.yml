@@ -147,6 +147,37 @@ jobs:
               normalized.sort(key=lambda item: item.get("name", ""))
               return normalized
 
+          def normalize_connections(connections):
+              if not isinstance(connections, dict):
+                  return connections
+              normalized = {}
+              for source, types in connections.items():
+                  if not isinstance(types, dict):
+                      normalized[source] = types
+                      continue
+                  normalized_types = {}
+                  for conn_type, groups in types.items():
+                      if not isinstance(groups, list):
+                          normalized_types[conn_type] = groups
+                          continue
+                      normalized_groups = []
+                      for group in groups:
+                          if isinstance(group, list):
+                              sorted_group = sorted(
+                                  (scrub(item) for item in group if isinstance(item, dict)),
+                                  key=lambda item: (
+                                      item.get("node", ""),
+                                      item.get("type", ""),
+                                      item.get("index", 0),
+                                  ),
+                              )
+                              normalized_groups.append(sorted_group)
+                          else:
+                              normalized_groups.append(group)
+                      normalized_types[conn_type] = normalized_groups
+                  normalized[source] = normalized_types
+              return normalized
+
           def scrub(obj):
               if isinstance(obj, dict):
                   cleaned = {}
@@ -174,6 +205,8 @@ jobs:
 
           local["nodes"] = normalize_nodes(local.get("nodes", []))
           remote["nodes"] = normalize_nodes(remote.get("nodes", []))
+          local["connections"] = normalize_connections(local.get("connections", {}))
+          remote["connections"] = normalize_connections(remote.get("connections", {}))
 
           local_hash = hashlib.sha256(canonical(local)).hexdigest()
           remote_hash = hashlib.sha256(canonical(remote)).hexdigest()
