@@ -1076,7 +1076,7 @@
       "main": [
         [
           {
-            "node": "Build Telegram Message",
+            "node": "Build Run Event (success)",
             "type": "main",
             "index": 0
           }
@@ -1127,7 +1127,7 @@
       "main": [
         [
           {
-            "node": "Build Telegram Message",
+            "node": "Build Run Event (success)",
             "type": "main",
             "index": 0
           }
