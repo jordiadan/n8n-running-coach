@@ -207,6 +207,11 @@ jobs:
           remote["nodes"] = normalize_nodes(remote.get("nodes", []))
           local["connections"] = normalize_connections(local.get("connections", {}))
           remote["connections"] = normalize_connections(remote.get("connections", {}))
+          local_settings = local.get("settings", {})
+          remote_settings = remote.get("settings", {})
+          if isinstance(local_settings, dict) and isinstance(remote_settings, dict):
+              remote["settings"] = {k: remote_settings.get(k) for k in local_settings.keys()}
+              local["settings"] = local_settings
 
           local_hash = hashlib.sha256(canonical(local)).hexdigest()
           remote_hash = hashlib.sha256(canonical(remote)).hexdigest()
