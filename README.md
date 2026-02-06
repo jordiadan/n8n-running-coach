@@ -13,6 +13,7 @@ This project collects training and wellness data, computes weekly load/recovery 
 - Builds a structured coaching prompt for OpenAI.
 - Requests a weekly plan as strict JSON output.
 - Formats that output as an HTML message and sends it to Telegram.
+- Captures quick feedback via Telegram (done/skipped/hard/pain) for future adaptation.
 - Supports both manual execution and scheduled execution in n8n.
 
 ## End-to-End Workflow
@@ -195,6 +196,7 @@ For complete rules, see:
 ## Observability
 
 - Each run writes a `run_events` record in MongoDB with status, attempt, weekStart/weekEnd, and errors.
+- Feedback replies are persisted in `feedback_events` for compliance and recovery signals.
 - Validation failures send a Telegram alert before the workflow throws the fallback error.
 - Fly health checks call `/healthz` on the n8n instance.
 - Set n8n variable `RC_TELEGRAM_DEBUG_FOOTER=true` (or env var) to append a debug footer with `run_id` details to Telegram messages.

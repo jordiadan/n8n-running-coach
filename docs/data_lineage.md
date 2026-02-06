@@ -28,6 +28,28 @@ Nested fields:
 Notes:
 - The workflow uses `findOneAndUpdate` with `updateKey: runId`, so `runId` must be present.
 
+### feedback_events
+
+Purpose: capture Telegram feedback for completed sessions (done/skipped/hard/pain).
+
+Written by:
+- `Parse Feedback` + `Feedback Events DB` (MongoDB node).
+
+Fields (top-level):
+- `sessionKey` (string, unique): `${runId}-${sessionDate}` for idempotency.
+- `runId` (string): links feedback to the originating plan run.
+- `response` (string): `done`, `skipped`, `hard`, or `pain`.
+- `sessionDate` (string): `YYYY-MM-DD` derived from Telegram message timestamp.
+- `sessionDay` (string): weekday label (e.g., `Monday`).
+- `chatId` (string | null): Telegram chat ID.
+- `messageId` (number | null): Telegram message ID.
+- `userId` (string | number | null): Telegram user ID.
+- `username` (string | null): Telegram username.
+- `receivedAt` (string): ISO timestamp when feedback was received.
+
+Notes:
+- The workflow uses `findOneAndUpdate` with `updateKey: sessionKey` to prevent duplicates.
+
 ### weekly_metrics
 
 Purpose: historical rollups used to provide context for weekly plan generation.
@@ -100,6 +122,11 @@ Recommended indexes for `run_events`:
 - Unique: `{ runId: 1 }`
 - Status filter: `{ status: 1, createdAt: -1 }`
 - TTL: `{ createdAt: 1 }` (90 days)
+
+Recommended indexes for `feedback_events`:
+- Unique: `{ sessionKey: 1 }`
+- Run lookups: `{ runId: 1, receivedAt: -1 }`
+- TTL: `{ receivedAt: 1 }` (180 days)
 
 Recommended indexes for `weekly_metrics`:
 - Unique: `{ weekStart: 1 }` (single-athlete assumption)

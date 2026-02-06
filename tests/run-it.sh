@@ -167,7 +167,7 @@ PY
 
 patch_workflow() {
   echo "▶️  Patching workflow JSON"
-  local js_mock_llm js_mock_repair_1 js_mock_repair_2 js_mock_telegram
+  local js_mock_llm js_mock_repair_1 js_mock_repair_2 js_mock_telegram js_mock_feedback_trigger
 
   js_mock_llm=$'return [{\n  json: {\n    activityPlan: {\n      nextWeek: {\n        phase: "Desarrollo",\n        objective: "Consolidar base aerobica",\n        weekStart: "2025-10-13",\n        weekEnd: "2025-10-19"\n      },\n      days: [\n        { day: "Lunes", date: "2025-10-13", activity: "Easy run", distance_time: "40 min", intensity: "Hard", goal: "Recuperacion", note: "Movilidad + foam roller" },\n        { day: "Martes", date: "2025-10-14", activity: "Gimnasio", distance_time: "60 min", intensity: "-", goal: "Fuerza (Pecho y brazos)" },\n        { day: "Miercoles", date: "2025-10-15", activity: "VO2 max", distance_time: "4x3 min", intensity: "Z4-Z5 (168-188 bpm)", goal: "Potencia aerobica" },\n        { day: "Jueves", date: "2025-10-16", activity: "Gimnasio", distance_time: "60 min", intensity: "-", goal: "Fuerza (Espalda y hombros)" },\n        { day: "Viernes", date: "2025-10-17", activity: "Tempo / Umbral", distance_time: "30 min", intensity: "Z3-Z4 (155-174 bpm)", goal: "Tolerancia lactato" },\n        { day: "Sabado", date: "2025-10-18", activity: "Gimnasio", distance_time: "60 min", intensity: "-", goal: "Fuerza (Piernas)" },\n        { day: "Domingo", date: "2025-10-19", activity: "Long run", distance_time: "75 min", intensity: "Z2 (118-138 bpm)", goal: "Base aerobica progresiva", note: "Ultimos 10 min a Z3" }\n      ]\n    },\n    justification: [\n      "Carga coherente con ATL y HRV recientes",\n      "VO2 y tempo separados por >=48h",\n      "Long run progresivo para consolidar CTL"\n    ]\n  }\n}];'
 
@@ -177,7 +177,9 @@ patch_workflow() {
 
   js_mock_telegram=$'return [{\n  json: {\n    ok: true,\n    result: {\n      message_id: 12345,\n      chat: { id: 987654, username: "itest" },\n      date: Math.floor(Date.now() / 1000),\n      text: "Test Telegram message"\n    }\n  }\n}];'
 
-  jq --arg js_llm "$js_mock_llm" --arg js_repair_1 "$js_mock_repair_1" --arg js_repair_2 "$js_mock_repair_2" --arg js_telegram "$js_mock_telegram" --arg mockUrl "http://mock:1080" '
+  js_mock_feedback_trigger=$'const runId = items[0].json.runId || "itest-run";\nreturn [{\n  json: {\n    callback_query: {\n      data: `feedback|${runId}|done`,\n      from: { id: 1, username: "itest" },\n      message: {\n        message_id: 12345,\n        chat: { id: 987654, username: "itest" },\n        date: Math.floor(Date.now() / 1000)\n      }\n    }\n  }\n}];'
+
+  jq --arg js_llm "$js_mock_llm" --arg js_repair_1 "$js_mock_repair_1" --arg js_repair_2 "$js_mock_repair_2" --arg js_telegram "$js_mock_telegram" --arg js_feedback "$js_mock_feedback_trigger" --arg mockUrl "http://mock:1080" '
     .nodes |= map(
       if .name == "GET Activities" then
         .parameters.url = $mockUrl + "/api/v1/athlete/i372001/activities"
@@ -187,6 +189,11 @@ patch_workflow() {
         .parameters.url = $mockUrl + "/api/v1/athlete/i372001/wellness"
         | .parameters.sendHeaders = false
         | .parameters.headerParameters.parameters = []
+      elif .name == "Telegram Feedback Trigger" then
+        .type = "n8n-nodes-base.code"
+        | .typeVersion = 2
+        | .parameters = {jsCode: $js_feedback}
+        | del(.credentials)
       elif .name == "Message a model" then
         .type = "n8n-nodes-base.code"
         | .typeVersion = 2
@@ -203,6 +210,16 @@ patch_workflow() {
         | .parameters = {jsCode: $js_repair_2}
         | del(.credentials)
       elif .name == "Send a text message" then
+        .type = "n8n-nodes-base.code"
+        | .typeVersion = 2
+        | .parameters = {jsCode: $js_telegram}
+        | del(.credentials)
+      elif .name == "Send Feedback Prompt" then
+        .type = "n8n-nodes-base.code"
+        | .typeVersion = 2
+        | .parameters = {jsCode: $js_telegram}
+        | del(.credentials)
+      elif .name == "Send Feedback Ack" then
         .type = "n8n-nodes-base.code"
         | .typeVersion = 2
         | .parameters = {jsCode: $js_telegram}
@@ -226,6 +243,9 @@ patch_workflow() {
     | .connections["Is WeeklyPlan valid? (attempt 2)"].main = [
         [{ "node": "Build Run Event (success)", "type": "main", "index": 0 }],
         [{ "node": "Build Run Event (success)", "type": "main", "index": 0 }]
+      ]
+    | .connections["Build Feedback Prompt"].main[0] += [
+        { "node": "Telegram Feedback Trigger", "type": "main", "index": 0 }
       ]
   ' "$WORKFLOW_FILE" > "$PATCHED_JSON"
 }
