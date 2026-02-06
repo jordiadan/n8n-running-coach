@@ -265,18 +265,21 @@ text = Path(log_path).read_text()
 text = re.sub(r'\x1B\[[0-9;]*[A-Za-z]', '', text)
 decoder = json.JSONDecoder()
 candidate = None
-for match in re.finditer(r'\{\s*"data"\s*:', text):
+for match in re.finditer(r'\{', text):
     idx = match.start()
     try:
         obj, _ = decoder.raw_decode(text[idx:])
     except json.JSONDecodeError:
         continue
-    candidate = obj
+    if isinstance(obj, dict) and ("data" in obj or "resultData" in obj):
+        candidate = obj
+        break
 
 if candidate is None:
     sys.exit(1)
 
-run_data = candidate.get('data', {}).get('resultData', {}).get('runData', {})
+data_root = candidate.get('data', candidate)
+run_data = data_root.get('resultData', {}).get('runData', {})
 if not isinstance(run_data, dict):
     sys.exit(1)
 
@@ -351,18 +354,21 @@ text = Path(log_path).read_text()
 text = re.sub(r'\x1B\[[0-9;]*[A-Za-z]', '', text)
 decoder = json.JSONDecoder()
 candidate = None
-for match in re.finditer(r'\{\s*"data"\s*:', text):
+for match in re.finditer(r'\{', text):
     idx = match.start()
     try:
         obj, _ = decoder.raw_decode(text[idx:])
     except json.JSONDecodeError:
         continue
-    candidate = obj
+    if isinstance(obj, dict) and ("data" in obj or "resultData" in obj):
+        candidate = obj
+        break
 
 if candidate is None:
     raise SystemExit("❌ Unable to find run data in execution log")
 
-run_data = candidate.get("data", {}).get("resultData", {}).get("runData", {})
+data_root = candidate.get("data", candidate)
+run_data = data_root.get("resultData", {}).get("runData", {})
 node_names = [
     "Validate WeeklyPlan (attempt 2)",
     "Validate WeeklyPlan (attempt 1)",
