@@ -823,6 +823,124 @@
           "name": "MongoDB account"
         }
       }
+    },
+    {
+      "id": "3623b766-3f29-4593-b706-255a8becd8c3",
+      "name": "Build Feedback Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        448
+      ],
+      "parameters": {
+        "jsCode": "const runContextItems = $items(\"Prompt Builder\");\nconst runContext = runContextItems.length ? runContextItems[0].json : {};\nconst plan = $json.activityPlan || {};\nconst nextWeek = plan.nextWeek || {};\nconst runId = (runContext.runId || $json.runId || ($json.runEvent && $json.runEvent.runId) || $json.__runId || null);\nif (!runId) { return []; }\n\nconst weekLabel = (nextWeek.weekStart && nextWeek.weekEnd) ? `${nextWeek.weekStart} → ${nextWeek.weekEnd}` : 'this week';\nconst text = [\n  `📝 <b>Quick feedback</b> (${weekLabel})`,\n  'How did your latest session feel?',\n  'Tap one option:'\n].join('\\n');\n\nconst replyMarkup = {\n  inline_keyboard: [\n    [{ text: '✅ Done', callback_data: `feedback|${runId}|done` }],\n    [{ text: '⏭️ Skipped', callback_data: `feedback|${runId}|skipped` }],\n    [{ text: '😵 Hard', callback_data: `feedback|${runId}|hard` }],\n    [{ text: '⚠️ Pain', callback_data: `feedback|${runId}|pain` }],\n  ]\n};\n\nreturn [{ json: { chatId: '730354404', text, replyMarkup, runId } }];\n"
+      }
+    },
+    {
+      "id": "81adaf55-23cc-466c-8876-c4ff27f4073b",
+      "name": "Send Feedback Prompt",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2000,
+        448
+      ],
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "replyMarkup": "={{ JSON.stringify($json.replyMarkup) }}"
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "hdQmaYn1B2efrJvB",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "id": "d2b2cc48-5fe2-4dac-8bd5-5edfc8984a54",
+      "name": "Telegram Feedback Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [
+        -200,
+        -200
+      ],
+      "parameters": {
+        "updates": [
+          "callback_query"
+        ]
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "hdQmaYn1B2efrJvB",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "id": "4febcf54-ca29-4bdb-b2f4-e28c880f9b95",
+      "name": "Parse Feedback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        -200
+      ],
+      "parameters": {
+        "jsCode": "const update = items[0].json || {};\nconst callback = update.callback_query || update.body?.callback_query || null;\nif (!callback || !callback.data) { return []; }\nconst parts = String(callback.data).split('|');\nif (parts[0] !== 'feedback' || parts.length < 3) { return []; }\nconst runId = parts[1];\nconst response = parts[2].toLowerCase();\nconst message = callback.message || {};\nconst chatId = message.chat && message.chat.id ? String(message.chat.id) : null;\nconst messageId = message.message_id || null;\nconst messageDate = message.date ? new Date(message.date * 1000) : new Date();\nconst sessionDate = messageDate.toISOString().slice(0, 10);\nconst sessionDay = messageDate.toLocaleDateString('en-US', { weekday: 'long' });\nconst sessionKey = `${runId}-${sessionDate}`;\nconst user = callback.from || {};\nreturn [{\n  json: {\n    sessionKey,\n    runId,\n    response,\n    sessionDate,\n    sessionDay,\n    chatId,\n    messageId,\n    userId: user.id || null,\n    username: user.username || null,\n    receivedAt: new Date().toISOString()\n  }\n}];\n"
+      }
+    },
+    {
+      "id": "71c41d55-4ed9-4934-ad94-1d6044774104",
+      "name": "Feedback Events DB",
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.2,
+      "position": [
+        220,
+        -200
+      ],
+      "alwaysOutputData": true,
+      "parameters": {
+        "operation": "findOneAndUpdate",
+        "collection": "feedback_events",
+        "updateKey": "sessionKey",
+        "fields": "sessionKey, runId, response, sessionDate, sessionDay, chatId, messageId, userId, username, receivedAt",
+        "upsert": true,
+        "options": {
+          "dateFields": "receivedAt"
+        }
+      },
+      "credentials": {
+        "mongoDb": {
+          "id": "8KyRHmD3ScRn2PPF",
+          "name": "MongoDB account"
+        }
+      }
+    },
+    {
+      "id": "3c6afed0-56fe-4a6c-b0f2-59fee294b969",
+      "name": "Send Feedback Ack",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        440,
+        -200
+      ],
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ `✅ Feedback saved: ${$json.response}` }}"
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "hdQmaYn1B2efrJvB",
+          "name": "Telegram account"
+        }
+      }
     }
   ],
   "pinData": {},
@@ -1223,6 +1341,11 @@
             "node": "Send a text message",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Build Feedback Prompt",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -1284,6 +1407,50 @@
     },
     "Run Artifacts DB (outputs)": {
       "main": []
+    },
+    "Build Feedback Prompt": {
+      "main": [
+        [
+          {
+            "node": "Send Feedback Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Feedback Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parse Feedback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Feedback": {
+      "main": [
+        [
+          {
+            "node": "Feedback Events DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Feedback Events DB": {
+      "main": [
+        [
+          {
+            "node": "Send Feedback Ack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": true,
