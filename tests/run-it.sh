@@ -483,6 +483,73 @@ print("✅ Telegram template includes all fixed sections and observability field
 PY
 }
 
+verify_why_this_plan() {
+  echo "▶️  Verifying metrics-backed Why this plan bullets"
+
+  python3 - "$EXECUTION_LOG" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+log_path = sys.argv[1]
+text = Path(log_path).read_text()
+text = re.sub(r'\x1B\[[0-9;]*[A-Za-z]', '', text)
+decoder = json.JSONDecoder()
+candidate = None
+for match in re.finditer(r'\{', text):
+    idx = match.start()
+    try:
+        obj, _ = decoder.raw_decode(text[idx:])
+    except json.JSONDecodeError:
+        continue
+    if isinstance(obj, dict) and ("data" in obj or "resultData" in obj):
+        candidate = obj
+        break
+
+if candidate is None:
+    raise SystemExit("❌ Unable to find run data in execution log")
+
+data_root = candidate.get("data", candidate)
+run_data = data_root.get("resultData", {}).get("runData", {})
+runs = run_data.get("Build Telegram Message") or []
+if not runs:
+    raise SystemExit("❌ Build Telegram Message output not found")
+
+payload = None
+for run in runs:
+    main = run.get("data", {}).get("main", [])
+    if main and main[0]:
+        payload = main[0][0].get("json", {})
+        break
+
+if not payload:
+    raise SystemExit("❌ Build Telegram Message payload is empty")
+
+html = payload.get("htmlMessage") or ""
+if "<b>Why this plan</b>" not in html:
+    raise SystemExit("❌ Missing Why this plan section in Telegram HTML")
+
+bullets = payload.get("whyThisPlan")
+if not isinstance(bullets, list):
+    raise SystemExit("❌ whyThisPlan is missing or invalid")
+if len(bullets) < 2 or len(bullets) > 4:
+    raise SystemExit(f"❌ whyThisPlan bullet count must be 2-4, got {len(bullets)}")
+if any(not isinstance(item, str) or not item.strip() for item in bullets):
+    raise SystemExit("❌ whyThisPlan contains empty bullet text")
+
+metric_keys = payload.get("whyPlanMetricKeys")
+if not isinstance(metric_keys, list):
+    raise SystemExit("❌ whyPlanMetricKeys is missing or invalid")
+
+failures = payload.get("whyPlanHallucinationFailures")
+if failures != 0:
+    raise SystemExit(f"❌ whyPlanHallucinationFailures expected 0, got {failures}")
+
+print("✅ Why this plan bullets are metrics-backed and validated")
+PY
+}
+
 # Preconditions
 require_tool jq
 require_tool docker
@@ -589,3 +656,4 @@ fi
 verify_execution
 verify_golden_snapshot
 verify_telegram_template
+verify_why_this_plan

@@ -198,6 +198,7 @@ For complete rules, see:
 
 - Each run writes a `run_events` record in MongoDB with status, attempt, weekStart/weekEnd, and errors.
 - Success events also persist Telegram template metadata (`telegramTemplateVersion`, `sectionCompleteness`, `sectionMissingCount`).
+- Telegram rationale telemetry is stored per run (`whyThisPlan`, `whyPlanMetricKeys`, `whyPlanHallucinationFailures`).
 - Feedback replies are persisted in `feedback_events` for compliance and recovery signals.
 - Validation failures send a Telegram alert before the workflow throws the fallback error.
 - Fly health checks call `/healthz` on the n8n instance.
