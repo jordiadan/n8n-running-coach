@@ -408,6 +408,81 @@ print("✅ Golden snapshot matches")
 PY
 }
 
+verify_telegram_template() {
+  echo "▶️  Verifying Telegram template sections"
+
+  python3 - "$EXECUTION_LOG" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+log_path = sys.argv[1]
+text = Path(log_path).read_text()
+text = re.sub(r'\x1B\[[0-9;]*[A-Za-z]', '', text)
+decoder = json.JSONDecoder()
+candidate = None
+for match in re.finditer(r'\{', text):
+    idx = match.start()
+    try:
+        obj, _ = decoder.raw_decode(text[idx:])
+    except json.JSONDecodeError:
+        continue
+    if isinstance(obj, dict) and ("data" in obj or "resultData" in obj):
+        candidate = obj
+        break
+
+if candidate is None:
+    raise SystemExit("❌ Unable to find run data in execution log")
+
+data_root = candidate.get("data", candidate)
+run_data = data_root.get("resultData", {}).get("runData", {})
+runs = run_data.get("Build Telegram Message") or []
+if not runs:
+    raise SystemExit("❌ Build Telegram Message node output not found")
+
+payload = None
+for run in runs:
+    main = run.get("data", {}).get("main", [])
+    if main and main[0]:
+        payload = main[0][0].get("json", {})
+        break
+
+if not payload:
+    raise SystemExit("❌ Build Telegram Message payload is empty")
+
+html = payload.get("htmlMessage") or ""
+required_sections = [
+    "<b>Last-week summary</b>",
+    "<b>This-week goal</b>",
+    "<b>Daily plan</b>",
+    "<b>Key session</b>",
+    "<b>Warnings</b>",
+]
+missing = [section for section in required_sections if section not in html]
+if missing:
+    raise SystemExit("❌ Missing fixed Telegram sections: " + ", ".join(missing))
+
+template_version = payload.get("telegramTemplateVersion")
+if template_version != "telegram-v2.0":
+    raise SystemExit(f"❌ Unexpected telegramTemplateVersion: {template_version!r}")
+
+completeness = payload.get("sectionCompleteness")
+required_keys = {"lastWeekSummary", "thisWeekGoal", "dailyPlan", "keySession", "warnings"}
+if not isinstance(completeness, dict):
+    raise SystemExit("❌ sectionCompleteness is missing or invalid")
+missing_keys = sorted(required_keys - set(completeness.keys()))
+if missing_keys:
+    raise SystemExit("❌ sectionCompleteness missing keys: " + ", ".join(missing_keys))
+
+missing_count = payload.get("sectionMissingCount")
+if not isinstance(missing_count, int):
+    raise SystemExit("❌ sectionMissingCount is missing or invalid")
+
+print("✅ Telegram template includes all fixed sections and observability fields")
+PY
+}
+
 # Preconditions
 require_tool jq
 require_tool docker
@@ -513,3 +588,4 @@ fi
 
 verify_execution
 verify_golden_snapshot
+verify_telegram_template

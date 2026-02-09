@@ -40,6 +40,7 @@ Main workflow file: `workflows/running_coach_workflow.json`
 6. Delivery:
    - `Build Telegram Message` -> HTML message body
    - `Send a text message` -> Telegram API node
+   - Telegram message uses fixed sections: `Last-week summary`, `This-week goal`, `Daily plan`, `Key session`, `Warnings`
 
 ## Tech Stack
 
@@ -196,6 +197,7 @@ For complete rules, see:
 ## Observability
 
 - Each run writes a `run_events` record in MongoDB with status, attempt, weekStart/weekEnd, and errors.
+- Success events also persist Telegram template metadata (`telegramTemplateVersion`, `sectionCompleteness`, `sectionMissingCount`).
 - Feedback replies are persisted in `feedback_events` for compliance and recovery signals.
 - Validation failures send a Telegram alert before the workflow throws the fallback error.
 - Fly health checks call `/healthz` on the n8n instance.
