@@ -550,6 +550,60 @@ print("✅ Why this plan bullets are metrics-backed and validated")
 PY
 }
 
+verify_preview_mode_metadata() {
+  echo "▶️  Verifying preview mode metadata defaults"
+
+  python3 - "$EXECUTION_LOG" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+log_path = sys.argv[1]
+text = Path(log_path).read_text()
+text = re.sub(r'\x1B\[[0-9;]*[A-Za-z]', '', text)
+decoder = json.JSONDecoder()
+candidate = None
+for match in re.finditer(r'\{', text):
+    idx = match.start()
+    try:
+        obj, _ = decoder.raw_decode(text[idx:])
+    except json.JSONDecodeError:
+        continue
+    if isinstance(obj, dict) and ("data" in obj or "resultData" in obj):
+        candidate = obj
+        break
+
+if candidate is None:
+    raise SystemExit("❌ Unable to find run data in execution log")
+
+data_root = candidate.get("data", candidate)
+run_data = data_root.get("resultData", {}).get("runData", {})
+runs = run_data.get("Build Telegram Message") or []
+if not runs:
+    raise SystemExit("❌ Build Telegram Message output not found")
+
+payload = None
+for run in runs:
+    main = run.get("data", {}).get("main", [])
+    if main and main[0]:
+        payload = main[0][0].get("json", {})
+        break
+
+if not payload:
+    raise SystemExit("❌ Build Telegram Message payload is empty")
+
+if payload.get("previewMode") is not False:
+    raise SystemExit(f"❌ Expected previewMode=false by default, got {payload.get('previewMode')!r}")
+if str(payload.get("previewChatId")) != "730354404":
+    raise SystemExit(f"❌ Expected previewChatId=730354404 by default, got {payload.get('previewChatId')!r}")
+if str(payload.get("chatId")) != "730354404":
+    raise SystemExit(f"❌ Expected chatId=730354404 by default, got {payload.get('chatId')!r}")
+
+print("✅ Preview mode metadata defaults are correct")
+PY
+}
+
 # Preconditions
 require_tool jq
 require_tool docker
@@ -657,3 +711,4 @@ verify_execution
 verify_golden_snapshot
 verify_telegram_template
 verify_why_this_plan
+verify_preview_mode_metadata
