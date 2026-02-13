@@ -735,6 +735,13 @@ feedback = prompt_payload.get("feedbackSummary")
 if not isinstance(feedback, dict):
     raise SystemExit("❌ feedbackSummary missing from Prompt Builder output")
 
+activities = prompt_payload.get("activities")
+wellness = prompt_payload.get("wellness")
+if not isinstance(activities, list) or len(activities) == 0:
+    raise SystemExit("❌ Prompt Builder should receive non-empty activities context")
+if not isinstance(wellness, list) or len(wellness) == 0:
+    raise SystemExit("❌ Prompt Builder should receive non-empty wellness context")
+
 counts = feedback.get("counts")
 if not isinstance(counts, dict):
     raise SystemExit("❌ feedbackSummary.counts missing")
