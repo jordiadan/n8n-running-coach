@@ -31,6 +31,9 @@ jobs:
       - name: Prompt version check
         run: python tests/check_prompt_version.py
 
+      - name: Secret scan
+        run: python3 scripts/scan_secrets.py
+
   integration-tests:
     name: Integration Tests
     runs-on: ubuntu-24.04

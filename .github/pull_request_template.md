@@ -41,6 +41,8 @@
 ## Checklist
 
 - [ ] No secrets committed
+- [ ] Secret scan executed (`python3 scripts/scan_secrets.py`)
+- [ ] New/changed secrets are stored in secret manager (not in git) and reflected in `docs/secrets_management.md`
 - [ ] Backward compatibility considered
 - [ ] README/docs updated if behavior changed
 - [ ] Branch follows `RC-<id>-<kebab-title>`
