@@ -177,7 +177,7 @@ seed_feedback_events() {
   stale_date="${stale_iso%%T*}"
 
   docker exec "$mid" mongosh --quiet "mongodb://localhost:27017/running_coach_itest" \
-    --eval "db.feedback_events.deleteMany({}); db.feedback_events.insertMany([{sessionKey:'itest-pain-recent-${recent_date}',sessionRef:'itest-prior-run-recent-111',runId:'itest-prior-run-recent',type:'pain',response:'pain',note:null,sessionDate:'${recent_date}',date:'${recent_date}',sessionDay:'Monday',day:'Monday',chatId:'730354404',messageId:111,userId:1,username:'itest',timestamp:'${now_iso}',receivedAt:'${now_iso}'},{sessionKey:'itest-skipped-recent-a-${recent_date}',sessionRef:'itest-prior-run-recent-113',runId:'itest-prior-run-recent',type:'skipped',response:'skipped',note:null,sessionDate:'${recent_date}',date:'${recent_date}',sessionDay:'Tuesday',day:'Tuesday',chatId:'730354404',messageId:113,userId:1,username:'itest',timestamp:'${now_iso}',receivedAt:'${now_iso}'},{sessionKey:'itest-skipped-recent-b-${recent_date}',sessionRef:'itest-prior-run-recent-114',runId:'itest-prior-run-recent',type:'skipped',response:'skipped',note:null,sessionDate:'${recent_date}',date:'${recent_date}',sessionDay:'Wednesday',day:'Wednesday',chatId:'730354404',messageId:114,userId:1,username:'itest',timestamp:'${now_iso}',receivedAt:'${now_iso}'},{sessionKey:'itest-pain-stale-${stale_date}',sessionRef:'itest-prior-run-stale-112',runId:'itest-prior-run-stale',type:'pain',response:'pain',note:null,sessionDate:'${stale_date}',date:'${stale_date}',sessionDay:'Monday',day:'Monday',chatId:'730354404',messageId:112,userId:1,username:'itest',timestamp:'${stale_iso}',receivedAt:'${stale_iso}'}]);" >/dev/null
+    --eval "db.feedback_events.deleteMany({}); db.feedback_events.insertMany([{sessionKey:'itest-pain-recent-${recent_date}',sessionRef:'itest-prior-run-recent-111',runId:'itest-prior-run-recent',type:'pain',response:'pain',note:null,sessionDate:'${recent_date}',date:'${recent_date}',sessionDay:'Monday',day:'Monday',chatId:'730354404',messageId:111,userId:1,username:'itest',timestamp:'${now_iso}',receivedAt:'${now_iso}'},{sessionKey:'itest-skipped-recent-a-${recent_date}',sessionRef:'itest-prior-run-recent-113',runId:'itest-prior-run-recent',type:'skipped',response:'skipped',note:null,sessionDate:'${recent_date}',date:'${recent_date}',sessionDay:'Tuesday',day:'Tuesday',chatId:'730354404',messageId:113,userId:1,username:'itest',timestamp:'${now_iso}',receivedAt:'${now_iso}'},{sessionKey:'itest-skipped-recent-b-${recent_date}',sessionRef:'itest-prior-run-recent-114',runId:'itest-prior-run-recent',type:'skipped',response:'skipped',note:null,sessionDate:'${recent_date}',date:'${recent_date}',sessionDay:'Wednesday',day:'Wednesday',chatId:'730354404',messageId:114,userId:1,username:'itest',timestamp:'${now_iso}',receivedAt:'${now_iso}'},{sessionKey:'itest-foreign-pain-${recent_date}',sessionRef:'itest-foreign-run-211',runId:'itest-foreign-run',type:'pain',response:'pain',note:null,sessionDate:'${recent_date}',date:'${recent_date}',sessionDay:'Monday',day:'Monday',chatId:'999000111',messageId:211,userId:2,username:'other',timestamp:'${now_iso}',receivedAt:'${now_iso}'},{sessionKey:'itest-foreign-skipped-${recent_date}',sessionRef:'itest-foreign-run-212',runId:'itest-foreign-run',type:'skipped',response:'skipped',note:null,sessionDate:'${recent_date}',date:'${recent_date}',sessionDay:'Tuesday',day:'Tuesday',chatId:'999000111',messageId:212,userId:2,username:'other',timestamp:'${now_iso}',receivedAt:'${now_iso}'},{sessionKey:'itest-pain-stale-${stale_date}',sessionRef:'itest-prior-run-stale-112',runId:'itest-prior-run-stale',type:'pain',response:'pain',note:null,sessionDate:'${stale_date}',date:'${stale_date}',sessionDay:'Monday',day:'Monday',chatId:'730354404',messageId:112,userId:1,username:'itest',timestamp:'${stale_iso}',receivedAt:'${stale_iso}'}]);" >/dev/null
   echo "✅ feedback_events history seeded"
 }
 
@@ -676,6 +676,8 @@ if not isinstance(triggers, list) or "painReported" not in triggers:
 risk_feedback = payload.get("riskFeedback")
 if not isinstance(risk_feedback, dict):
     raise SystemExit("❌ riskFeedback missing")
+if str(risk_feedback.get("chatId")) != "730354404":
+    raise SystemExit(f"❌ riskFeedback should be scoped to default athlete chat, got {risk_feedback.get('chatId')!r}")
 if risk_feedback.get("painEventCount") != 1:
     raise SystemExit(f"❌ Expected only recent pain event count = 1, got {risk_feedback.get('painEventCount')!r}")
 
@@ -745,10 +747,12 @@ if not isinstance(wellness, list) or len(wellness) == 0:
 counts = feedback.get("counts")
 if not isinstance(counts, dict):
     raise SystemExit("❌ feedbackSummary.counts missing")
+if str(feedback.get("chatId")) != "730354404":
+    raise SystemExit(f"❌ feedbackSummary.chatId should be scoped to default athlete chat, got {feedback.get('chatId')!r}")
 if counts.get("pain") != 1:
     raise SystemExit(f"❌ Expected recent pain count = 1, got {counts.get('pain')!r}")
-if counts.get("skipped", 0) < 2:
-    raise SystemExit(f"❌ Expected skipped count >= 2 for low adherence scenario, got {counts.get('skipped')!r}")
+if counts.get("skipped") != 2:
+    raise SystemExit(f"❌ Expected skipped count = 2 for scoped low adherence scenario, got {counts.get('skipped')!r}")
 
 if feedback.get("hasRecentPain") is not True:
     raise SystemExit("❌ hasRecentPain should be true")
