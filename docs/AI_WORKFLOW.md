@@ -69,6 +69,7 @@ Required Jira status transitions:
 
 - tests pass
 - lint/format checks pass
+- secret scan passes (`python3 scripts/scan_secrets.py`)
 - no dead code
 - docs updated when behavior changes
 - rollback plan included in PR description

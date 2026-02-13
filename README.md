@@ -152,6 +152,10 @@ Required GitHub secrets:
 - `N8N_ENCRYPTION_KEY`
 - `N8N_API_KEY`
 
+Secrets setup, rotation, and incident handling:
+
+- `docs/secrets_management.md`
+
 Deploy action:
 
 - Stages encryption secret in Fly
@@ -229,6 +233,7 @@ For complete rules, see:
 - Store secrets in n8n credentials and deployment secret managers (GitHub/Fly).
 - Keep `N8N_ENCRYPTION_KEY` stable across deployments to preserve credential decryption.
 - Prefer least-privilege API scopes for Intervals.icu, Telegram, and OpenAI keys.
+- Run `python3 scripts/scan_secrets.py` before opening PRs.
 
 ## Next Steps
 
