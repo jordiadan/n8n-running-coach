@@ -878,6 +878,55 @@ if not isinstance(core_metrics.get("invalidJsonRate"), (int, float)):
 if not isinstance(core_metrics.get("latencyMs"), (int, float)) or core_metrics.get("latencyMs") < 0:
     raise SystemExit("❌ coreMetrics.latencyMs should be a non-negative number")
 
+event_run_id = event_payload.get("runId")
+validate_nodes = [
+    "Validate WeeklyPlan (attempt 0)",
+    "Validate WeeklyPlan (attempt 1)",
+    "Validate WeeklyPlan (attempt 2)",
+]
+attempt_payloads = []
+for node_name in validate_nodes:
+    for run in run_data.get(node_name) or []:
+        main = run.get("data", {}).get("main", [])
+        if main and main[0]:
+            payload = main[0][0].get("json", {})
+            if isinstance(payload, dict):
+                payload_run_id = payload.get("__runId") or payload.get("runId")
+                if event_run_id and payload_run_id and str(payload_run_id) != str(event_run_id):
+                    continue
+                attempt_payloads.append(payload)
+
+if not attempt_payloads:
+    raise SystemExit("❌ validate attempt payloads missing for core metrics cross-check")
+
+derived_attempt_count = len(attempt_payloads)
+derived_invalid_json_count = sum(
+    1
+    for payload in attempt_payloads
+    if any(
+        str(err or "").lower().startswith("invalid_json")
+        for err in (payload.get("__errors") if isinstance(payload.get("__errors"), list) else [])
+    )
+)
+if core_metrics.get("validationAttemptCount") != derived_attempt_count:
+    raise SystemExit(
+        "❌ coreMetrics.validationAttemptCount should equal executed validation attempts "
+        f"({derived_attempt_count}), got {core_metrics.get('validationAttemptCount')!r}"
+    )
+if core_metrics.get("invalidJsonCount") != derived_invalid_json_count:
+    raise SystemExit(
+        "❌ coreMetrics.invalidJsonCount should accumulate invalid_json attempts across retries "
+        f"({derived_invalid_json_count}), got {core_metrics.get('invalidJsonCount')!r}"
+    )
+expected_invalid_json_rate = (
+    derived_invalid_json_count / derived_attempt_count if derived_attempt_count else 0
+)
+if core_metrics.get("invalidJsonRate") != expected_invalid_json_rate:
+    raise SystemExit(
+        "❌ coreMetrics.invalidJsonRate should match invalid_json attempts / validation attempts "
+        f"({expected_invalid_json_rate}), got {core_metrics.get('invalidJsonRate')!r}"
+    )
+
 thresholds = event_payload.get("coreMetricThresholds")
 if not isinstance(thresholds, dict):
     raise SystemExit("❌ coreMetricThresholds missing from run event")
