@@ -817,6 +817,73 @@ event_feedback = event_payload.get("feedbackSummary")
 if not isinstance(event_feedback, dict) or event_feedback.get("hasLowAdherence") is not True:
     raise SystemExit("❌ run event should persist feedbackSummary with hasLowAdherence=true")
 
+structured_logs = event_payload.get("structuredLogs")
+if not isinstance(structured_logs, list) or len(structured_logs) < 2:
+    raise SystemExit("❌ structuredLogs should contain at least 2 entries")
+
+required_log_fields = {"run_id", "node_name", "duration_ms", "status", "error_type"}
+for entry in structured_logs:
+    if not isinstance(entry, dict):
+        raise SystemExit("❌ structuredLogs contains a non-object entry")
+    missing_log_fields = required_log_fields - set(entry.keys())
+    if missing_log_fields:
+        raise SystemExit(f"❌ structured log entry missing fields: {sorted(missing_log_fields)}")
+    if str(entry.get("run_id")) != str(event_payload.get("runId")):
+        raise SystemExit("❌ structured log run_id must match runId")
+    if not isinstance(entry.get("duration_ms"), (int, float)) or entry.get("duration_ms") < 0:
+        raise SystemExit("❌ structured log duration_ms must be a non-negative number")
+
+coverage_rate = event_payload.get("structuredLogCoverageRate")
+if not isinstance(coverage_rate, (int, float)) or coverage_rate < 0.99:
+    raise SystemExit(f"❌ structuredLogCoverageRate should be >= 0.99, got {coverage_rate!r}")
+snake_coverage = event_payload.get("structured_log_coverage_rate")
+if snake_coverage != coverage_rate:
+    raise SystemExit("❌ structured_log_coverage_rate should mirror structuredLogCoverageRate")
+
+structured_count = event_payload.get("structuredLogCount")
+if not isinstance(structured_count, int) or structured_count != len(structured_logs):
+    raise SystemExit("❌ structuredLogCount should match structuredLogs length")
+
+artifact_runs = run_data.get("Build Run Artifact (outputs)") or []
+if not artifact_runs:
+    raise SystemExit("❌ Build Run Artifact (outputs) output not found")
+
+artifact_payload = None
+for run in artifact_runs:
+    main = run.get("data", {}).get("main", [])
+    if main and main[0]:
+        artifact_payload = main[0][0].get("json", {})
+        break
+
+if not artifact_payload:
+    raise SystemExit("❌ Build Run Artifact payload is empty")
+
+if artifact_payload.get("structuredLogCount") != structured_count:
+    raise SystemExit("❌ run artifact structuredLogCount should match run event")
+if artifact_payload.get("structuredLogCoverageRate") != coverage_rate:
+    raise SystemExit("❌ run artifact structuredLogCoverageRate should match run event")
+
+failure_runs = run_data.get("Build Failure Event") or []
+if failure_runs:
+    failure_payload = None
+    for run in failure_runs:
+        main = run.get("data", {}).get("main", [])
+        if main and main[0]:
+            failure_payload = main[0][0].get("json", {})
+            break
+    if failure_payload:
+        failure_logs = failure_payload.get("structuredLogs")
+        if not isinstance(failure_logs, list) or not failure_logs:
+            raise SystemExit("❌ failure structuredLogs should be present when failure path runs")
+        for entry in failure_logs:
+            if not isinstance(entry, dict):
+                raise SystemExit("❌ failure structuredLogs contains non-object entry")
+            missing_log_fields = required_log_fields - set(entry.keys())
+            if missing_log_fields:
+                raise SystemExit(f"❌ failure structured log entry missing fields: {sorted(missing_log_fields)}")
+            if str(entry.get("status")) != "failure":
+                raise SystemExit("❌ failure structured log status must be 'failure'")
+
 print("✅ Feedback adaptation summary and triggers are correct")
 PY
 }
