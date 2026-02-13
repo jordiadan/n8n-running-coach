@@ -207,6 +207,7 @@ For complete rules, see:
 - Telegram rationale telemetry is stored per run (`whyThisPlan`, `whyPlanMetricKeys`, `whyPlanHallucinationFailures`).
 - Success events also store preview routing metadata (`previewMode`, `previewChatId`).
 - Success events also persist risk-warning metadata (`riskWarningTriggerCount`, `riskWarningTriggers`, `riskWarningTriggerCounts`, `riskFeedback`).
+- Success events also persist iCal export telemetry (`icalExportSuccess`, `icalFileName`, `icalDeliveryStatus`, `ical_export_success_rate`).
 - Feedback replies are persisted in `feedback_events` for compliance and recovery signals.
 - Validation failures send a Telegram alert before the workflow throws the fallback error.
 - Fly health checks call `/healthz` on the n8n instance.
@@ -217,6 +218,11 @@ For complete rules, see:
 - `docs/data_lineage.md` documents collections and field ownership.
 - `docs/prompt_versioning.md` describes how prompt versions are managed.
 - `scripts/bootstrap_run_events_indexes.js` creates baseline indexes for `run_events`.
+
+## Calendar Export
+
+- Weekly plan delivery now includes an `.ics` calendar attachment in Telegram.
+- The calendar export emits one event per planned day/session with actionable titles.
 
 ## Plan Guardrails (Hard Rules)
 
