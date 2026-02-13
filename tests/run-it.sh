@@ -230,6 +230,11 @@ patch_workflow() {
         | .typeVersion = 2
         | .parameters = {jsCode: $js_telegram}
         | del(.credentials)
+      elif .name == "Send iCal Attachment" then
+        .type = "n8n-nodes-base.code"
+        | .typeVersion = 2
+        | .parameters = {jsCode: $js_telegram}
+        | del(.credentials)
       elif .name == "Send Feedback Prompt" then
         .type = "n8n-nodes-base.code"
         | .typeVersion = 2
@@ -474,6 +479,7 @@ required_sections = [
     "<b>This-week goal</b>",
     "<b>Daily plan</b>",
     "<b>Key session</b>",
+    "<b>Calendar</b>",
     "<b>Warnings</b>",
 ]
 missing = [section for section in required_sections if section not in html]
@@ -505,6 +511,32 @@ if not isinstance(counts, dict):
 for key in ("done", "skipped", "hard", "pain"):
     if key not in counts:
         raise SystemExit(f"❌ weeklyAdherenceSummary.counts missing key: {key}")
+
+if payload.get("icalExportSuccess") is not True:
+    raise SystemExit("❌ icalExportSuccess should be true in success path")
+
+ical_file = payload.get("icalFileName")
+if not isinstance(ical_file, str) or not ical_file.endswith(".ics"):
+    raise SystemExit(f"❌ invalid icalFileName: {ical_file!r}")
+
+ical_text = payload.get("icalContent")
+if not isinstance(ical_text, str) or not ical_text.strip():
+    raise SystemExit("❌ icalContent missing from Build Telegram Message payload")
+
+lines = [line.strip() for line in ical_text.splitlines() if line.strip()]
+if "BEGIN:VCALENDAR" not in lines or "END:VCALENDAR" not in lines:
+    raise SystemExit("❌ icalContent is missing VCALENDAR boundaries")
+
+event_count = sum(1 for line in lines if line == "BEGIN:VEVENT")
+if event_count != 7:
+    raise SystemExit(f"❌ expected 7 VEVENT entries in icalContent, got {event_count}")
+
+if not any(line.startswith("SUMMARY:") for line in lines):
+    raise SystemExit("❌ icalContent is missing SUMMARY entries")
+
+ical_metric = payload.get("ical_export_success_rate")
+if ical_metric != 1:
+    raise SystemExit(f"❌ ical_export_success_rate should be 1, got {ical_metric!r}")
 
 print("✅ Telegram template includes all fixed sections and observability fields")
 PY
@@ -816,6 +848,38 @@ if not isinstance(event_triggers, list) or not expected_triggers.issubset(set(ev
 event_feedback = event_payload.get("feedbackSummary")
 if not isinstance(event_feedback, dict) or event_feedback.get("hasLowAdherence") is not True:
     raise SystemExit("❌ run event should persist feedbackSummary with hasLowAdherence=true")
+
+run_events_success_runs = run_data.get("Run Events DB (success)") or []
+if not run_events_success_runs:
+    raise SystemExit("❌ Run Events DB (success) output not found")
+
+run_events_payload = None
+for run in run_events_success_runs:
+    main = run.get("data", {}).get("main", [])
+    if main and main[0]:
+        run_events_payload = main[0][0].get("json", {})
+        break
+
+if not run_events_payload:
+    raise SystemExit("❌ Run Events DB (success) payload is empty")
+
+if run_events_payload.get("icalExportSuccess") is not True:
+    raise SystemExit("❌ run_events payload should persist icalExportSuccess=true")
+
+if run_events_payload.get("icalDeliveryMode") != "telegram_attachment":
+    raise SystemExit(
+        f"❌ run_events payload should persist icalDeliveryMode=telegram_attachment, got {run_events_payload.get('icalDeliveryMode')!r}"
+    )
+
+if run_events_payload.get("icalDeliveryStatus") != "queued":
+    raise SystemExit(
+        f"❌ run_events payload should persist icalDeliveryStatus=queued, got {run_events_payload.get('icalDeliveryStatus')!r}"
+    )
+
+if run_events_payload.get("ical_export_success_rate") != 1:
+    raise SystemExit(
+        f"❌ run_events payload should persist ical_export_success_rate=1, got {run_events_payload.get('ical_export_success_rate')!r}"
+    )
 
 structured_logs = event_payload.get("structuredLogs")
 if not isinstance(structured_logs, list) or len(structured_logs) < 2:
