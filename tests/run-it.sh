@@ -165,6 +165,22 @@ PY
   echo "✅ weekly_metrics history seeded"
 }
 
+seed_feedback_events() {
+  echo "▶️  Seeding feedback_events history"
+  local mid now_iso recent_date stale_iso stale_date
+  mid=$("${COMPOSE_CMD[@]}" ps -q mongo)
+  [[ -n "$mid" ]] || { echo "❌ Unable to resolve mongo container id"; exit 1; }
+
+  now_iso="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  recent_date="${now_iso%%T*}"
+  stale_iso="$(date -u -v-45d +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -d '45 days ago' +"%Y-%m-%dT%H:%M:%SZ")"
+  stale_date="${stale_iso%%T*}"
+
+  docker exec "$mid" mongosh --quiet "mongodb://localhost:27017/running_coach_itest" \
+    --eval "db.feedback_events.deleteMany({}); db.feedback_events.insertMany([{sessionKey:'itest-pain-recent-${recent_date}',runId:'itest-prior-run-recent',response:'pain',sessionDate:'${recent_date}',sessionDay:'Monday',chatId:'730354404',messageId:111,userId:1,username:'itest',receivedAt:'${now_iso}'},{sessionKey:'itest-pain-stale-${stale_date}',runId:'itest-prior-run-stale',response:'pain',sessionDate:'${stale_date}',sessionDay:'Monday',chatId:'730354404',messageId:112,userId:1,username:'itest',receivedAt:'${stale_iso}'}]);" >/dev/null
+  echo "✅ feedback_events history seeded"
+}
+
 patch_workflow() {
   echo "▶️  Patching workflow JSON"
   local js_mock_llm js_mock_repair_1 js_mock_repair_2 js_mock_telegram js_mock_feedback_trigger
@@ -604,6 +620,73 @@ print("✅ Preview mode metadata defaults are correct")
 PY
 }
 
+verify_risk_warning_metadata() {
+  echo "▶️  Verifying pain-triggered risk warning metadata"
+
+  python3 - "$EXECUTION_LOG" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+log_path = sys.argv[1]
+text = Path(log_path).read_text()
+text = re.sub(r'\x1B\[[0-9;]*[A-Za-z]', '', text)
+decoder = json.JSONDecoder()
+candidate = None
+for match in re.finditer(r'\{', text):
+    idx = match.start()
+    try:
+        obj, _ = decoder.raw_decode(text[idx:])
+    except json.JSONDecodeError:
+        continue
+    if isinstance(obj, dict) and ("data" in obj or "resultData" in obj):
+        candidate = obj
+        break
+
+if candidate is None:
+    raise SystemExit("❌ Unable to find run data in execution log")
+
+data_root = candidate.get("data", candidate)
+run_data = data_root.get("resultData", {}).get("runData", {})
+runs = run_data.get("Build Telegram Message") or []
+if not runs:
+    raise SystemExit("❌ Build Telegram Message output not found")
+
+payload = None
+for run in runs:
+    main = run.get("data", {}).get("main", [])
+    if main and main[0]:
+        payload = main[0][0].get("json", {})
+        break
+
+if not payload:
+    raise SystemExit("❌ Build Telegram Message payload is empty")
+
+counts = payload.get("riskWarningTriggerCounts")
+if not isinstance(counts, dict):
+    raise SystemExit("❌ riskWarningTriggerCounts missing")
+if counts.get("painReported") != 1:
+    raise SystemExit(f"❌ Expected painReported trigger count = 1, got {counts.get('painReported')!r}")
+
+triggers = payload.get("riskWarningTriggers")
+if not isinstance(triggers, list) or "painReported" not in triggers:
+    raise SystemExit("❌ painReported missing from riskWarningTriggers")
+
+risk_feedback = payload.get("riskFeedback")
+if not isinstance(risk_feedback, dict):
+    raise SystemExit("❌ riskFeedback missing")
+if risk_feedback.get("painEventCount") != 1:
+    raise SystemExit(f"❌ Expected only recent pain event count = 1, got {risk_feedback.get('painEventCount')!r}")
+
+html = str(payload.get("htmlMessage") or "")
+if "Pain feedback reported" not in html:
+    raise SystemExit("❌ Pain warning text missing in htmlMessage")
+
+print("✅ Pain-triggered risk metadata is present and time-windowed")
+PY
+}
+
 # Preconditions
 require_tool jq
 require_tool docker
@@ -654,6 +737,7 @@ CID=$("${COMPOSE_CMD[@]}" ps -q n8n)
 
 seed_credentials
 seed_weekly_metrics_history
+seed_feedback_events
 patch_workflow
 
 docker cp "$PATCHED_JSON" "$CID:/home/node/itest.workflow.json"
@@ -712,3 +796,4 @@ verify_golden_snapshot
 verify_telegram_template
 verify_why_this_plan
 verify_preview_mode_metadata
+verify_risk_warning_metadata
