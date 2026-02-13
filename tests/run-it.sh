@@ -10,6 +10,8 @@ MOCKS_FILE="$REPO_ROOT/tests/mockserver-expectations.json"
 CREDS_FILE="$REPO_ROOT/tests/credentials/mongo.json"
 PATCHED_JSON="$TMP_DIR/running-coach.itest.json"
 EXECUTION_LOG="$TMP_DIR/execution.log"
+EXECUTION_LOG_REMINDER_DUP="$TMP_DIR/execution.reminder-dup.log"
+EXECUTION_LOG_REMINDER_OPTOUT="$TMP_DIR/execution.reminder-optout.log"
 
 N8N_HOST="localhost"
 N8N_PORT="5678"
@@ -240,6 +242,11 @@ patch_workflow() {
         | .typeVersion = 2
         | .parameters = {jsCode: $js_telegram}
         | del(.credentials)
+      elif .name == "Send Reminder Message" then
+        .type = "n8n-nodes-base.code"
+        | .typeVersion = 2
+        | .parameters = {jsCode: $js_telegram}
+        | del(.credentials)
       elif .name == "Send Failure Alert" then
         .type = "n8n-nodes-base.code"
         | .typeVersion = 2
@@ -260,10 +267,41 @@ patch_workflow() {
         [{ "node": "Build Run Event (success)", "type": "main", "index": 0 }],
         [{ "node": "Build Run Event (success)", "type": "main", "index": 0 }]
       ]
+    | .connections["Build Run Event (success)"].main[0] += [
+        { "node": "Build Reminder Context", "type": "main", "index": 0 }
+      ]
     | .connections["Build Feedback Prompt"].main[0] += [
         { "node": "Telegram Feedback Trigger", "type": "main", "index": 0 }
       ]
   ' "$WORKFLOW_FILE" > "$PATCHED_JSON"
+}
+
+execute_workflow() {
+  local log_file=$1
+  local env_prefix=$2
+  local timeout_cmd status
+
+  timeout_cmd="$(command -v gtimeout || command -v timeout || true)"
+  if [[ -n "$timeout_cmd" ]]; then
+    set +e
+    $timeout_cmd 120 docker exec -u node "$CID" sh -lc "cd /home/node && $env_prefix n8n execute --rawOutput --id $workflow_id" | tee "$log_file"
+    status=${PIPESTATUS[0]}
+    set -e
+    if [[ "$status" -eq 124 || "$status" -eq 143 ]]; then
+      echo "❌ Execution timed out"
+      exit 1
+    fi
+  else
+    set +e
+    docker exec -u node "$CID" sh -lc "cd /home/node && $env_prefix n8n execute --rawOutput --id $workflow_id" | tee "$log_file"
+    status=${PIPESTATUS[0]}
+    set -e
+  fi
+
+  if [[ "$status" -ne 0 ]]; then
+    echo "❌ Workflow execution failed (exit $status)"
+    exit "$status"
+  fi
 }
 
 verify_execution() {
@@ -1196,6 +1234,247 @@ print("✅ FeedbackEvent write/read and aggregation checks passed")
 PY
 }
 
+verify_reminder_delivery_and_metrics() {
+  local log_path=$1
+  echo "▶️  Verifying reminder delivery and metrics"
+
+  local reminder_date chat_id
+  read -r reminder_date chat_id < <(python3 - "$log_path" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+log_path = sys.argv[1]
+text = Path(log_path).read_text()
+text = re.sub(r'\x1B\[[0-9;]*[A-Za-z]', '', text)
+decoder = json.JSONDecoder()
+candidate = None
+for match in re.finditer(r'\{', text):
+    idx = match.start()
+    try:
+        obj, _ = decoder.raw_decode(text[idx:])
+    except json.JSONDecodeError:
+        continue
+    if isinstance(obj, dict) and ("data" in obj or "resultData" in obj):
+        candidate = obj
+        break
+
+if candidate is None:
+    raise SystemExit("❌ Unable to find run data in execution log")
+
+data_root = candidate.get("data", candidate)
+run_data = data_root.get("resultData", {}).get("runData", {})
+
+msg_runs = run_data.get("Build Reminder Message") or []
+if not msg_runs:
+    raise SystemExit("❌ Build Reminder Message output not found")
+
+msg_payload = None
+for run in msg_runs:
+    main = run.get("data", {}).get("main", [])
+    if main and main[0]:
+        msg_payload = main[0][0].get("json", {})
+        break
+
+if not msg_payload:
+    raise SystemExit("❌ Build Reminder Message payload is empty")
+
+if msg_payload.get("shouldSend") is not True:
+    raise SystemExit("❌ Reminder should be sendable in opt-in run")
+if msg_payload.get("reminderTime") != "09:30":
+    raise SystemExit(f"❌ reminderTime should reflect config (09:30), got {msg_payload.get('reminderTime')!r}")
+if msg_payload.get("reminderTimezone") != "UTC":
+    raise SystemExit(f"❌ reminderTimezone should reflect config (UTC), got {msg_payload.get('reminderTimezone')!r}")
+session = msg_payload.get("session")
+if not isinstance(session, dict) or not session.get("activity"):
+    raise SystemExit("❌ Reminder should include a daily planned session")
+if "<b>Training reminder</b>" not in str(msg_payload.get("text") or ""):
+    raise SystemExit("❌ Reminder text template missing")
+
+event_runs = run_data.get("Build Reminder Event") or []
+if not event_runs:
+    raise SystemExit("❌ Build Reminder Event output not found")
+
+event_payload = None
+for run in event_runs:
+    main = run.get("data", {}).get("main", [])
+    if main and main[0]:
+        event_payload = main[0][0].get("json", {})
+        if event_payload.get("deliveryStatus") == "sent":
+            break
+
+if not event_payload or event_payload.get("deliveryStatus") != "sent":
+    raise SystemExit("❌ Reminder event should be marked as sent")
+if event_payload.get("reminder_sent_count") != 1:
+    raise SystemExit("❌ reminder_sent_count should be 1 when reminder is sent")
+if event_payload.get("reminder_opt_in_users_count") != 1:
+    raise SystemExit("❌ reminder_opt_in_users_count should be 1 for enabled reminders")
+
+run_event_writes = run_data.get("Run Events DB (reminder)") or []
+if not run_event_writes:
+    raise SystemExit("❌ Run Events DB (reminder) output not found")
+
+print(msg_payload.get("reminderDate"), msg_payload.get("chatId"))
+PY
+)
+
+  [[ -n "$reminder_date" && -n "$chat_id" ]] || { echo "❌ Could not resolve reminder identifiers"; exit 1; }
+
+  local mid sent_count
+  mid=$("${COMPOSE_CMD[@]}" ps -q mongo)
+  [[ -n "$mid" ]] || { echo "❌ Unable to resolve mongo container id"; exit 1; }
+
+  sent_count="$(docker exec "$mid" mongosh --quiet "mongodb://localhost:27017/running_coach_itest" --eval "print(db.reminder_events.countDocuments({ chatId: '${chat_id}', reminderDate: '${reminder_date}', deliveryStatus: 'sent' }));")"
+  sent_count="$(echo "$sent_count" | tail -n1 | tr -d '[:space:]')"
+  if [[ "$sent_count" != "1" ]]; then
+    echo "❌ Expected exactly 1 sent reminder for ${chat_id}/${reminder_date}, got ${sent_count:-<empty>}"
+    exit 1
+  fi
+
+  echo "✅ Reminder delivery and metrics are correct"
+}
+
+verify_reminder_daily_dedupe() {
+  local log_path=$1
+  echo "▶️  Verifying reminder daily dedupe"
+
+  local reminder_date chat_id
+  read -r reminder_date chat_id < <(python3 - "$log_path" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+log_path = sys.argv[1]
+text = Path(log_path).read_text()
+text = re.sub(r'\x1B\[[0-9;]*[A-Za-z]', '', text)
+decoder = json.JSONDecoder()
+candidate = None
+for match in re.finditer(r'\{', text):
+    idx = match.start()
+    try:
+        obj, _ = decoder.raw_decode(text[idx:])
+    except json.JSONDecodeError:
+        continue
+    if isinstance(obj, dict) and ("data" in obj or "resultData" in obj):
+        candidate = obj
+        break
+
+if candidate is None:
+    raise SystemExit("❌ Unable to find run data in execution log")
+
+data_root = candidate.get("data", candidate)
+run_data = data_root.get("resultData", {}).get("runData", {})
+
+msg_runs = run_data.get("Build Reminder Message") or []
+if not msg_runs:
+    raise SystemExit("❌ Build Reminder Message output not found")
+
+msg_payload = None
+for run in msg_runs:
+    main = run.get("data", {}).get("main", [])
+    if main and main[0]:
+        msg_payload = main[0][0].get("json", {})
+        break
+
+if not msg_payload:
+    raise SystemExit("❌ Build Reminder Message payload is empty")
+if msg_payload.get("shouldSend") is not False:
+    raise SystemExit("❌ Reminder should be blocked on duplicate daily send")
+if msg_payload.get("deliveryStatus") != "skipped_already_sent":
+    raise SystemExit(f"❌ Expected skipped_already_sent, got {msg_payload.get('deliveryStatus')!r}")
+
+event_runs = run_data.get("Build Reminder Event") or []
+if not event_runs:
+    raise SystemExit("❌ Build Reminder Event output not found")
+
+event_payload = None
+for run in event_runs:
+    main = run.get("data", {}).get("main", [])
+    if main and main[0]:
+        event_payload = main[0][0].get("json", {})
+        break
+
+if not event_payload:
+    raise SystemExit("❌ Build Reminder Event payload is empty")
+if event_payload.get("deliveryStatus") != "skipped_already_sent":
+    raise SystemExit("❌ Reminder dedupe event should persist skipped_already_sent status")
+if event_payload.get("reminder_sent_count") != 0:
+    raise SystemExit("❌ reminder_sent_count should be 0 for duplicate reminders")
+
+print(msg_payload.get("reminderDate"), msg_payload.get("chatId"))
+PY
+)
+
+  [[ -n "$reminder_date" && -n "$chat_id" ]] || { echo "❌ Could not resolve reminder identifiers"; exit 1; }
+
+  local mid sent_count
+  mid=$("${COMPOSE_CMD[@]}" ps -q mongo)
+  [[ -n "$mid" ]] || { echo "❌ Unable to resolve mongo container id"; exit 1; }
+
+  sent_count="$(docker exec "$mid" mongosh --quiet "mongodb://localhost:27017/running_coach_itest" --eval "print(db.reminder_events.countDocuments({ chatId: '${chat_id}', reminderDate: '${reminder_date}', deliveryStatus: 'sent' }));")"
+  sent_count="$(echo "$sent_count" | tail -n1 | tr -d '[:space:]')"
+  if [[ "$sent_count" != "1" ]]; then
+    echo "❌ Dedupe failed; expected sent reminder count to remain 1, got ${sent_count:-<empty>}"
+    exit 1
+  fi
+
+  echo "✅ Reminder daily dedupe works"
+}
+
+verify_reminder_opt_out() {
+  local log_path=$1
+  echo "▶️  Verifying reminder opt-out path"
+
+  python3 - "$log_path" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+log_path = sys.argv[1]
+text = Path(log_path).read_text()
+text = re.sub(r'\x1B\[[0-9;]*[A-Za-z]', '', text)
+decoder = json.JSONDecoder()
+candidate = None
+for match in re.finditer(r'\{', text):
+    idx = match.start()
+    try:
+        obj, _ = decoder.raw_decode(text[idx:])
+    except json.JSONDecodeError:
+        continue
+    if isinstance(obj, dict) and ("data" in obj or "resultData" in obj):
+        candidate = obj
+        break
+
+if candidate is None:
+    raise SystemExit("❌ Unable to find run data in execution log")
+
+data_root = candidate.get("data", candidate)
+run_data = data_root.get("resultData", {}).get("runData", {})
+
+def has_non_empty_output(node_name: str) -> bool:
+    runs = run_data.get(node_name) or []
+    for run in runs:
+        main = run.get("data", {}).get("main", [])
+        if main and main[0]:
+            return True
+    return False
+
+if has_non_empty_output("Build Reminder Context"):
+    raise SystemExit("❌ Reminder context should not emit items when RC_REMINDER_ENABLED=false")
+if has_non_empty_output("Build Reminder Message"):
+    raise SystemExit("❌ Reminder message should not be generated when reminders are disabled")
+if has_non_empty_output("Send Reminder Message"):
+    raise SystemExit("❌ Reminder should not be sent when reminders are disabled")
+if has_non_empty_output("Build Reminder Event"):
+    raise SystemExit("❌ Reminder event should not be persisted when reminders are disabled")
+
+print("✅ Reminder opt-out path is respected")
+PY
+}
+
 # Preconditions
 require_tool jq
 require_tool docker
@@ -1279,26 +1558,8 @@ workflow_id="$(echo "$workflow_id" | tr -d '[:space:]')"
 
 echo "✅ Workflow imported with ID $workflow_id"
 
-echo "▶️  Executing workflow"
-timeout_cmd="$(command -v gtimeout || command -v timeout || true)"
-if [[ -n "$timeout_cmd" ]]; then
-  set +e
-  $timeout_cmd 120 docker exec -u node "$CID" sh -lc "cd /home/node && n8n execute --rawOutput --id $workflow_id" | tee "$EXECUTION_LOG"
-  status=${PIPESTATUS[0]}
-  set -e
-  if [[ "$status" -eq 124 || "$status" -eq 143 ]]; then
-    echo "❌ Execution timed out"
-    exit 1
-  fi
-else
-  docker exec -u node "$CID" sh -lc "cd /home/node && n8n execute --rawOutput --id $workflow_id" | tee "$EXECUTION_LOG"
-  status=${PIPESTATUS[0]}
-fi
-
-if [[ "$status" -ne 0 ]]; then
-  echo "❌ Workflow execution failed (exit $status)"
-  exit "$status"
-fi
+echo "▶️  Executing workflow (reminders opt-in path)"
+execute_workflow "$EXECUTION_LOG" "RC_REMINDER_ENABLED=true RC_REMINDER_FORCE_SEND=true RC_REMINDER_TIME=09:30 RC_REMINDER_TIMEZONE=UTC"
 
 verify_execution
 verify_golden_snapshot
@@ -1309,3 +1570,12 @@ verify_risk_warning_metadata
 verify_feedback_adaptation_metadata
 verify_feedback_quick_replies
 verify_feedback_event_storage_and_aggregation
+verify_reminder_delivery_and_metrics "$EXECUTION_LOG"
+
+echo "▶️  Executing workflow (reminder dedupe check)"
+execute_workflow "$EXECUTION_LOG_REMINDER_DUP" "RC_REMINDER_ENABLED=true RC_REMINDER_FORCE_SEND=true RC_REMINDER_TIME=09:30 RC_REMINDER_TIMEZONE=UTC"
+verify_reminder_daily_dedupe "$EXECUTION_LOG_REMINDER_DUP"
+
+echo "▶️  Executing workflow (reminder opt-out check)"
+execute_workflow "$EXECUTION_LOG_REMINDER_OPTOUT" "RC_REMINDER_ENABLED=false RC_REMINDER_FORCE_SEND=true RC_REMINDER_TIME=09:30 RC_REMINDER_TIMEZONE=UTC"
+verify_reminder_opt_out "$EXECUTION_LOG_REMINDER_OPTOUT"

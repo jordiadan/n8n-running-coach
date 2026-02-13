@@ -14,6 +14,7 @@ This project collects training and wellness data, computes weekly load/recovery 
 - Requests a weekly plan as strict JSON output.
 - Formats that output as an HTML message and sends it to Telegram.
 - Captures quick feedback via Telegram (done/skipped/hard/pain) for future adaptation.
+- Supports optional daily reminders tied to the planned session of the day.
 - Supports both manual execution and scheduled execution in n8n.
 
 ## End-to-End Workflow
@@ -81,6 +82,7 @@ Main workflow file: `workflows/running_coach_workflow.json`
 The workflow includes a cron schedule expression:
 
 - `0 0 21 * * 0` -> every Sunday at 21:00 (n8n timezone dependent).
+- `0 * * * * *` -> reminder trigger every minute; actual send is gated by reminder config.
 
 Production timezone is configured in Fly as `Europe/Madrid`.
 
@@ -199,6 +201,10 @@ For complete rules, see:
 - For production, ensure DB config and credentials are aligned with your actual infrastructure.
 - Set `RC_TELEGRAM_PREVIEW_MODE=true` (or n8n variable) to route outgoing Telegram messages to preview mode.
 - Set `RC_TELEGRAM_PREVIEW_CHAT_ID=<chat_id>` when preview mode is enabled (required safety guard).
+- Set `RC_REMINDER_ENABLED=true` to opt in to daily reminders.
+- Set `RC_REMINDER_TIME=<HH:MM>` (24-hour) to choose the reminder time.
+- Set `RC_REMINDER_TIMEZONE=<IANA timezone>` (default `Europe/Madrid`) for reminder time evaluation.
+- Set `RC_REMINDER_FORCE_SEND=true` only for controlled test/debug executions.
 
 ## Observability
 
@@ -208,6 +214,7 @@ For complete rules, see:
 - Success events also store preview routing metadata (`previewMode`, `previewChatId`).
 - Success events also persist risk-warning metadata (`riskWarningTriggerCount`, `riskWarningTriggers`, `riskWarningTriggerCounts`, `riskFeedback`).
 - Feedback replies are persisted in `feedback_events` for compliance and recovery signals.
+- Reminder executions are persisted in `reminder_events` and `run_events` with `reminder_sent_count` and `reminder_opt_in_users_count`.
 - Validation failures send a Telegram alert before the workflow throws the fallback error.
 - Fly health checks call `/healthz` on the n8n instance.
 - Set n8n variable `RC_TELEGRAM_DEBUG_FOOTER=true` (or env var) to append a debug footer with `run_id` details to Telegram messages.
