@@ -298,7 +298,44 @@
     },
     {
       "parameters": {
-        "jsCode": "/**\n * Prompt Builder para generar el JSON limpio que le enviaremos a OpenAI\n * Incluye semana, fechas y solicita al modelo los campos necesarios.\n */\n\n// —————————————— CONFIGURACIÓN ——————————————\n\n// Fecha de inicio de tu plan (puedes ajustarla)\nconst programStartDate = new Date('2025-07-19');\n\n// Fecha de la competición\nconst raceDate = new Date('2026-02-15');\n\n// ——————————— CÁLCULOS DE FECHAS ———————————\n\nconst today = new Date();\nconst msPerWeek = 7 * 24 * 60 * 60 * 1000;\nconst weeksSinceStart = Math.floor((today - programStartDate) / msPerWeek) + 1;\nconst weeksToRace = Math.ceil((raceDate - today) / msPerWeek);\nconst totalPlanWeeks = weeksSinceStart + weeksToRace;\n\n// —————————— DETERMINACIÓN DE FASE ——————————\n\nlet phaseName, phaseNote;\nif (weeksSinceStart <= Math.floor(totalPlanWeeks * 0.3)) {\n  phaseName = 'Base';\n  phaseNote = 'Rodajes suaves y fuerza general.';\n} else if (weeksSinceStart <= Math.floor(totalPlanWeeks * 0.7)) {\n  phaseName = 'Desarrollo';\n  phaseNote = 'Interválicos, tempo runs y fuerza específica.';\n} else if (weeksToRace > 2) {\n  phaseName = 'Específica';\n  phaseNote = 'Ritmo objetivo, simulaciones de competición.';\n} else {\n  phaseName = 'Taper';\n  phaseNote = 'Reducción de carga manteniendo chispa.';\n}\n\n// —————————— DESCOMPOSICIÓN DE DATOS ——————————\n\nconst { current, history: rawHistory } = items[0].json;\nconst history = Array.isArray(rawHistory)\n  ? rawHistory\n      .sort((a, b) => b.weekStart.localeCompare(a.weekStart))\n      .slice(0, 4)\n  : [];\n\nconst { activities, wellness } = items[1].json;\n\n// —————————— EXTRACCIÓN DE FCMAX ——————————\n\nconst DEFAULT_FCMAX = 202;\nconst recordedMaxHR = Math.max(\n  ...activities.map(a => a.max_heartrate || 0).filter(hr => hr > 0)\n);\nconst fcMax = recordedMaxHR >= 190 ? recordedMaxHR : DEFAULT_FCMAX;\n\n// —————————— HELPERS ——————————\n\nconst avg = arr => arr.length ? arr.reduce((sum, v) => sum + v, 0) / arr.length : 0;\nconst fmt = x   => x != null ? x.toFixed(1) : '—';\n\n// —————————— MÉTRICAS SEMANA ACTUAL ——————————\n\nconst { weekStart, weekEnd } = current;\nconst ctlActs    = avg( activities.map(a => a.icu_ctl      || 0) );\nconst atlActs    = avg( activities.map(a => a.icu_atl      || 0) );\nconst rampActs   = avg( activities.map(a => a.icu_rampRate || 0) );\nconst totalTrimp = activities.reduce((s,a) => s + (a.trimp || 0), 0);\n\nconst restVals = [...activities, ...wellness]\n  .map(o => o.restingHR).filter(v => v != null);\nconst stepVals = [...activities, ...wellness]\n  .map(o => o.steps).filter(v => v != null);\n\nconst restHR   = avg(restVals);\nconst steps    = avg(stepVals);\nconst hrvWel   = avg( wellness.map(w => w.hrv        || 0) );\nconst sleepWel = avg( wellness.map(w => w.sleepScore || 0) );\n\n// —————————— CONSTRUCCIÓN DEL PROMPT (FORZAR JSON PURA) ——————————\n\nconst prompt = `\n// PROMPT_BEGIN\nEres mi coach experto en medio maratón (método noruego, híbrido fuerza+carrera).\n\nContexto:\n- Mitja Marató Barcelona (15‑02‑2026), objetivo 1h45m (~4:59/km).\n- Empezamos el plan el ${programStartDate.toISOString().slice(0,10)}, esta es la semana **${weeksSinceStart}** de un plan de **${totalPlanWeeks}** semanas.\n- Quedan **${weeksToRace}** semanas → Fase **${phaseName}**: ${phaseNote}\n\nResumen ${weekStart} → ${weekEnd}:\n• CTL avg: ${fmt(ctlActs)}, ATL avg: ${fmt(atlActs)}, RampRate avg: ${fmt(rampActs)}\n• TRIMP total: ${fmt(totalTrimp)}\n• FC reposo medio: ${fmt(restHR)} bpm, Pasos/día medio: ${fmt(steps)}\n• HRV avg: ${fmt(hrvWel)}, SleepScore avg: ${fmt(sleepWel)}\n\nHistorial (4 semanas anteriores):\n${history.map(h =>\n  `- Semana ${h.weekStart}: ${fmt(h.runDistance/1000)} km · ATL ${fmt(h.atlMean)} · RampRate ${fmt(h.rampRateMean)} · RHR ${fmt(h.restHrMean)}`\n).join('\\n')}\n\nPor favor genera mi plan PARA LA PRÓXIMA SEMANA siguiendo el método noruego:\n- Indica fase del plan y el objetivo de la semana.\n- **Gimnasio**: Mar, Jue y Sáb (orden: Pecho y brazos, Espalda y hombros, Piernas).\n- **Running** según carga (CTL, ATL, TRIMP, HRV/Sueño):\n  1. Sesión VO₂ máx  \n  2. Sesión tempo/umbral  \n  3. Tirada larga aeróbica  \n  4. Easy/recovery  \n\n**IMPORTANTE**:  \n- Gimnasio a las 12–13h, calcula recuperación y planifica alrededor.  \n- Usa **zonas de FC Garmin (Z1–Z5)** basadas en FCmáx=${fcMax} bpm; indica % y rango de bpm.  \n- Si dispones de LTHR (183 bpm), úsalo para definir las zonas de umbral.\n\n\n\nSALIDA (OBLIGATORIA):\n\n- Devuelve exclusivamente un JSON válido y minificado en UNA sola línea (sin texto extra, sin bloques de código, sin comentarios).\n- Sustituye en todos los textos: &→&amp;, <→&lt;, >→&gt;.\n- La respuesta empieza con { y termina con }.\n- ≤ 3000 caracteres en total.\n\nEstructura EXACTA con 7 objetos en days (uno por cada día de la semana). Si no cabe, reduce primero note y luego justification.\n\n\\`\\`\\`json\n{\n  \"schema_version\": \"1.0\",\n  \"activityPlan\": {\n    \"nextWeek\": {\n      \"phase\": string,\n      \"objective\": string,\n      \"weekStart\": string,   // e.g. \"2025-07-14\"\n      \"weekEnd\":   string    // e.g. \"2025-07-20\"\n    },\n    \"days\": [\n      {\n        \"day\": string,         // Nombre en español, ej. \"Lunes\"\n        \"date\": string,        // Fecha concreta, ej. \"2025-07-14\"\n        \"activity\": string,\n        \"distance_time\": string,\n        \"intensity\": string,\n        \"goal\": string,\n        \"note\": string\n      }\n      // …un objeto por cada día de la semana\n    ]\n  },\n  \"justification\": [ string, … ]\n}\n\\`\\`\\`\n// PROMPT_END\n`.trim();\n\n// —————————— RETORNO ——————————\n\nconst runId = `${new Date().toISOString()}-${Math.random().toString(36).slice(2, 8)}`;\nconst PROMPT_VERSION = \"2026-02-05\";\n// Bump PROMPT_VERSION whenever the prompt template changes.\nconst modelId = \"gpt-5\";\nconst createdAt = new Date().toISOString();\n\nreturn [{\n  json: {\n    runId,\n    promptVersion: PROMPT_VERSION,\n    modelId,\n    createdAt,\n    prompt,\n    metrics: {\n      programStartDate: programStartDate.toISOString().slice(0,10),\n      weeksSinceStart,\n      totalPlanWeeks,\n      weeksToRace,\n      phaseName,\n      weekStart,\n      weekEnd,\n      ctlActs,\n      atlActs,\n      rampActs,\n      totalTrimp,\n      restHR,\n      steps,\n      hrvWel,\n      sleepWel,\n      fcMax\n    },\n    history,\n    activities,\n    wellness\n  }\n}];\n"
+        "collection": "feedback_events",
+        "options": {
+          "sort": "{ \"receivedAt\": -1 }"
+        },
+        "query": "={\n}\n"
+      },
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.2,
+      "position": [
+        760,
+        304
+      ],
+      "id": "f8aba5ee-a953-4256-9776-75ef637e978d",
+      "name": "Read Recent Feedback Summary",
+      "alwaysOutputData": true,
+      "credentials": {
+        "mongoDb": {
+          "id": "8KyRHmD3ScRn2PPF",
+          "name": "MongoDB account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const LOOKBACK_DAYS = 21;\nconst cutoffMs = Date.now() - (LOOKBACK_DAYS * 24 * 60 * 60 * 1000);\n\nconst toTs = (value) => {\n  const ts = new Date(value || 0).getTime();\n  return Number.isFinite(ts) ? ts : null;\n};\n\nconst normalizeType = (doc) => String(doc.type || doc.response || '').toLowerCase();\n\nconst docs = items\n  .map((item) => item.json || {})\n  .filter((doc) => doc && Object.keys(doc).length > 0);\n\nconst recentDocs = docs.filter((doc) => {\n  const ts = toTs(doc.receivedAt || doc.timestamp || doc.sessionDate);\n  return ts !== null && ts >= cutoffMs;\n});\n\n// Mongo find can run once per upstream item; dedupe to avoid double-counting.\nconst seen = new Set();\nconst uniqueRecentDocs = recentDocs.filter((doc) => {\n  const dedupeKey = String(\n    doc.sessionKey\n      || [doc.runId, doc.sessionRef, doc.type || doc.response, doc.receivedAt || doc.timestamp || doc.sessionDate]\n           .filter(Boolean)\n           .join('|')\n  );\n  if (!dedupeKey || seen.has(dedupeKey)) {\n    return false;\n  }\n  seen.add(dedupeKey);\n  return true;\n});\n\nconst counts = { done: 0, skipped: 0, hard: 0, pain: 0 };\nfor (const doc of uniqueRecentDocs) {\n  const type = normalizeType(doc);\n  if (Object.prototype.hasOwnProperty.call(counts, type)) {\n    counts[type] += 1;\n  }\n}\n\nconst totalResponses = counts.done + counts.skipped + counts.hard + counts.pain;\nconst adherenceSampleSize = counts.done + counts.skipped;\nconst adherenceRate = adherenceSampleSize > 0 ? counts.done / adherenceSampleSize : null;\nconst skipRate = adherenceSampleSize > 0 ? counts.skipped / adherenceSampleSize : null;\n\nconst latestPainDoc = uniqueRecentDocs\n  .filter((doc) => normalizeType(doc) === 'pain')\n  .sort((a, b) => (toTs(b.receivedAt || b.timestamp || b.sessionDate) || 0) - (toTs(a.receivedAt || a.timestamp || a.sessionDate) || 0))[0] || null;\n\nconst hasRecentPain = counts.pain > 0;\nconst hasLowAdherence = counts.skipped >= 2 || (adherenceSampleSize > 0 && adherenceRate !== null && adherenceRate < 0.6);\n\nconst adaptationTriggers = [];\nconst adaptationReasons = [];\nif (hasRecentPain) {\n  adaptationTriggers.push('painReported');\n  adaptationReasons.push('Recent pain feedback detected; biasing plan toward recovery and lower impact/intensity.');\n}\nif (hasLowAdherence) {\n  adaptationTriggers.push('lowAdherence');\n  adaptationReasons.push('Adherence is low; simplifying the week and prioritizing consistency.');\n}\n\nconst feedbackSummary = {\n  windowDays: LOOKBACK_DAYS,\n  totalResponses,\n  counts,\n  adherenceRate,\n  skipRate,\n  hasRecentPain,\n  hasLowAdherence,\n  latestPainDate: latestPainDoc ? (latestPainDoc.sessionDate || String(latestPainDoc.receivedAt || latestPainDoc.timestamp || '').slice(0, 10)) : null,\n  adaptationTriggers,\n  adaptationReasons,\n};\n\nconst requestItems = $items('Merge Request Data');\nconst requestPayload = requestItems.length ? (requestItems[0].json || {}) : {};\n\nreturn [{\n  json: Object.assign({}, requestPayload, { feedbackSummary }),\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        448
+      ],
+      "id": "bd921e4f-76d3-42ed-acc0-222e414a078c",
+      "name": "Summarize Recent Feedback"
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Prompt Builder para generar el JSON limpio que le enviaremos a OpenAI\n * Incluye semana, fechas y solicita al modelo los campos necesarios.\n */\n\n// —————————————— CONFIGURACIÓN ——————————————\n\n// Fecha de inicio de tu plan (puedes ajustarla)\nconst programStartDate = new Date('2025-07-19');\n\n// Fecha de la competición\nconst raceDate = new Date('2026-02-15');\n\n// ——————————— CÁLCULOS DE FECHAS ———————————\n\nconst today = new Date();\nconst msPerWeek = 7 * 24 * 60 * 60 * 1000;\nconst weeksSinceStart = Math.floor((today - programStartDate) / msPerWeek) + 1;\nconst weeksToRace = Math.ceil((raceDate - today) / msPerWeek);\nconst totalPlanWeeks = weeksSinceStart + weeksToRace;\n\n// —————————— DETERMINACIÓN DE FASE ——————————\n\nlet phaseName, phaseNote;\nif (weeksSinceStart <= Math.floor(totalPlanWeeks * 0.3)) {\n  phaseName = 'Base';\n  phaseNote = 'Rodajes suaves y fuerza general.';\n} else if (weeksSinceStart <= Math.floor(totalPlanWeeks * 0.7)) {\n  phaseName = 'Desarrollo';\n  phaseNote = 'Interválicos, tempo runs y fuerza específica.';\n} else if (weeksToRace > 2) {\n  phaseName = 'Específica';\n  phaseNote = 'Ritmo objetivo, simulaciones de competición.';\n} else {\n  phaseName = 'Taper';\n  phaseNote = 'Reducción de carga manteniendo chispa.';\n}\n\n// —————————— DESCOMPOSICIÓN DE DATOS ——————————\n\nconst { current, history: rawHistory } = items[0].json;\nconst history = Array.isArray(rawHistory)\n  ? rawHistory\n      .sort((a, b) => b.weekStart.localeCompare(a.weekStart))\n      .slice(0, 4)\n  : [];\n\nconst feedbackSummaryRaw = items[0].json.feedbackSummary;\nconst feedbackSummary = (feedbackSummaryRaw && typeof feedbackSummaryRaw === 'object')\n  ? feedbackSummaryRaw\n  : {\n      windowDays: 21,\n      totalResponses: 0,\n      counts: { done: 0, skipped: 0, hard: 0, pain: 0 },\n      adherenceRate: null,\n      skipRate: null,\n      hasRecentPain: false,\n      hasLowAdherence: false,\n      latestPainDate: null,\n      adaptationTriggers: [],\n      adaptationReasons: [],\n    };\n\nconst sourceActivities = Array.isArray(items[0].json.activities) ? items[0].json.activities : [];\nconst sourceWellness = Array.isArray(items[0].json.wellness) ? items[0].json.wellness : [];\nconst activities = sourceActivities;\nconst wellness = sourceWellness;\n\n// —————————— EXTRACCIÓN DE FCMAX ——————————\n\nconst DEFAULT_FCMAX = 202;\nconst recordedMaxHR = Math.max(\n  ...activities.map(a => a.max_heartrate || 0).filter(hr => hr > 0)\n);\nconst fcMax = recordedMaxHR >= 190 ? recordedMaxHR : DEFAULT_FCMAX;\n\n// —————————— HELPERS ——————————\n\nconst avg = arr => arr.length ? arr.reduce((sum, v) => sum + v, 0) / arr.length : 0;\nconst fmt = x   => x != null ? x.toFixed(1) : '—';\n\n// —————————— MÉTRICAS SEMANA ACTUAL ——————————\n\nconst { weekStart, weekEnd } = current;\nconst ctlActs    = avg( activities.map(a => a.icu_ctl      || 0) );\nconst atlActs    = avg( activities.map(a => a.icu_atl      || 0) );\nconst rampActs   = avg( activities.map(a => a.icu_rampRate || 0) );\nconst totalTrimp = activities.reduce((s,a) => s + (a.trimp || 0), 0);\n\nconst restVals = [...activities, ...wellness]\n  .map(o => o.restingHR).filter(v => v != null);\nconst stepVals = [...activities, ...wellness]\n  .map(o => o.steps).filter(v => v != null);\n\nconst restHR   = avg(restVals);\nconst steps    = avg(stepVals);\nconst hrvWel   = avg( wellness.map(w => w.hrv        || 0) );\nconst sleepWel = avg( wellness.map(w => w.sleepScore || 0) );\n\n// —————————— CONSTRUCCIÓN DEL PROMPT (FORZAR JSON PURA) ——————————\n\nconst prompt = `\n// PROMPT_BEGIN\nEres mi coach experto en medio maratón (método noruego, híbrido fuerza+carrera).\n\nContexto:\n- Mitja Marató Barcelona (15‑02‑2026), objetivo 1h45m (~4:59/km).\n- Empezamos el plan el ${programStartDate.toISOString().slice(0,10)}, esta es la semana **${weeksSinceStart}** de un plan de **${totalPlanWeeks}** semanas.\n- Quedan **${weeksToRace}** semanas → Fase **${phaseName}**: ${phaseNote}\n\nResumen ${weekStart} → ${weekEnd}:\n• CTL avg: ${fmt(ctlActs)}, ATL avg: ${fmt(atlActs)}, RampRate avg: ${fmt(rampActs)}\n• TRIMP total: ${fmt(totalTrimp)}\n• FC reposo medio: ${fmt(restHR)} bpm, Pasos/día medio: ${fmt(steps)}\n• HRV avg: ${fmt(hrvWel)}, SleepScore avg: ${fmt(sleepWel)}\n\nHistorial (4 semanas anteriores):\n${history.map(h =>\n  `- Semana ${h.weekStart}: ${fmt(h.runDistance/1000)} km · ATL ${fmt(h.atlMean)} · RampRate ${fmt(h.rampRateMean)} · RHR ${fmt(h.restHrMean)}`\n).join('\\n')}\n\nFeedback reciente (${feedbackSummary.windowDays} dias):\n• done=${feedbackSummary.counts.done}, skipped=${feedbackSummary.counts.skipped}, hard=${feedbackSummary.counts.hard}, pain=${feedbackSummary.counts.pain}\n• adherenceRate=${feedbackSummary.adherenceRate == null ? 'n/a' : feedbackSummary.adherenceRate.toFixed(2)}, skipRate=${feedbackSummary.skipRate == null ? 'n/a' : feedbackSummary.skipRate.toFixed(2)}\n• triggers=${feedbackSummary.adaptationTriggers.length ? feedbackSummary.adaptationTriggers.join(', ') : 'none'}\n\nPor favor genera mi plan PARA LA PRÓXIMA SEMANA siguiendo el método noruego:\n- Indica fase del plan y el objetivo de la semana.\n- **Gimnasio**: Mar, Jue y Sáb (orden: Pecho y brazos, Espalda y hombros, Piernas).\n- **Running** según carga (CTL, ATL, TRIMP, HRV/Sueño):\n  1. Sesión VO₂ máx  \n  2. Sesión tempo/umbral  \n  3. Tirada larga aeróbica  \n  4. Easy/recovery  \n\nReglas de adaptacion por feedback:\n- Si trigger= painReported: reduce intensidad/volumen, evita impacto duro, y añade guidance explicita de recuperacion.\n- Si trigger= lowAdherence: simplifica el plan (menos complejidad/intensidad) y prioriza adherencia/consistencia.\n- Cuando haya triggers activos, reflejalos en nextWeek.objective y en justification con razones concretas.\n\n**IMPORTANTE**:  \n- Gimnasio a las 12–13h, calcula recuperación y planifica alrededor.  \n- Usa **zonas de FC Garmin (Z1–Z5)** basadas en FCmáx=${fcMax} bpm; indica % y rango de bpm.  \n- Si dispones de LTHR (183 bpm), úsalo para definir las zonas de umbral.\n\n\n\nSALIDA (OBLIGATORIA):\n\n- Devuelve exclusivamente un JSON válido y minificado en UNA sola línea (sin texto extra, sin bloques de código, sin comentarios).\n- Sustituye en todos los textos: &→&amp;, <→&lt;, >→&gt;.\n- La respuesta empieza con { y termina con }.\n- ≤ 3000 caracteres en total.\n\nEstructura EXACTA con 7 objetos en days (uno por cada día de la semana). Si no cabe, reduce primero note y luego justification.\n\n\\`\\`\\`json\n{\n  \"schema_version\": \"1.0\",\n  \"activityPlan\": {\n    \"nextWeek\": {\n      \"phase\": string,\n      \"objective\": string,\n      \"weekStart\": string,   // e.g. \"2025-07-14\"\n      \"weekEnd\":   string    // e.g. \"2025-07-20\"\n    },\n    \"days\": [\n      {\n        \"day\": string,         // Nombre en español, ej. \"Lunes\"\n        \"date\": string,        // Fecha concreta, ej. \"2025-07-14\"\n        \"activity\": string,\n        \"distance_time\": string,\n        \"intensity\": string,\n        \"goal\": string,\n        \"note\": string\n      }\n      // …un objeto por cada día de la semana\n    ]\n  },\n  \"justification\": [ string, … ]\n}\n\\`\\`\\`\n// PROMPT_END\n`.trim();\n\n// —————————— RETORNO ——————————\n\nconst runId = `${new Date().toISOString()}-${Math.random().toString(36).slice(2, 8)}`;\nconst PROMPT_VERSION = \"2026-02-13\";\n// Bump PROMPT_VERSION whenever the prompt template changes.\nconst modelId = \"gpt-5\";\nconst createdAt = new Date().toISOString();\n\nreturn [{\n  json: {\n    runId,\n    promptVersion: PROMPT_VERSION,\n    modelId,\n    createdAt,\n    prompt,\n    metrics: {\n      programStartDate: programStartDate.toISOString().slice(0,10),\n      weeksSinceStart,\n      totalPlanWeeks,\n      weeksToRace,\n      phaseName,\n      weekStart,\n      weekEnd,\n      ctlActs,\n      atlActs,\n      rampActs,\n      totalTrimp,\n      restHR,\n      steps,\n      hrvWel,\n      sleepWel,\n      fcMax\n    },\n    history,\n    feedbackSummary,\n    activities,\n    wellness\n  }\n}];\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -324,7 +361,7 @@
               "role": "system"
             },
             {
-              "content": "={{\n  `Datos de la ÚLTIMA SEMANA:\\n` +\n  `Métricas: ${JSON.stringify($json.metrics, null, 2)}\\n\\n` +\n  `Historial (semanas anteriores): ${JSON.stringify($json.history, null, 2)}`\n}}"
+              "content": "={{\n  `Datos de la ÚLTIMA SEMANA:\\n` +\n  `Métricas: ${JSON.stringify($json.metrics, null, 2)}\\n\\n` +\n  `Historial (semanas anteriores): ${JSON.stringify($json.history, null, 2)}\\n\\n` +\n  `Feedback reciente: ${JSON.stringify($json.feedbackSummary, null, 2)}`\n}}"
             }
           ]
         },
@@ -636,7 +673,7 @@
         328
       ],
       "parameters": {
-        "jsCode": "const content = items[0].json || {};\nconst plan = content.activityPlan || {};\nconst nextWeek = plan.nextWeek || {};\n\nconst runContextItems = $items(\"Prompt Builder\");\nconst runContext = runContextItems.length ? runContextItems[0].json : {};\nconst runId = runContext.runId || content.runId || `${new Date().toISOString()}-${Math.random().toString(36).slice(2, 8)}`;\nconst errors = Array.isArray(content.__errors) ? content.__errors : [];\n\nconst runEvent = {\n  runId,\n  status: 'success',\n  attempt: content.__attempt ?? null,\n  weekStart: nextWeek.weekStart || null,\n  weekEnd: nextWeek.weekEnd || null,\n  errorCount: errors.length,\n  errors,\n  createdAt: new Date().toISOString()\n};\n\nreturn [{\n  json: Object.assign({}, content, runEvent, { runEvent })\n}];\n"
+        "jsCode": "const content = items[0].json || {};\nconst plan = content.activityPlan || {};\nconst nextWeek = plan.nextWeek || {};\n\nconst runContextItems = $items(\"Prompt Builder\");\nconst runContext = runContextItems.length ? runContextItems[0].json : {};\nconst runId = runContext.runId || content.runId || `${new Date().toISOString()}-${Math.random().toString(36).slice(2, 8)}`;\nconst errors = Array.isArray(content.__errors) ? content.__errors : [];\n\nconst feedbackSummary = runContext.feedbackSummary && typeof runContext.feedbackSummary === 'object'\n  ? runContext.feedbackSummary\n  : null;\nconst adaptationTriggers = Array.isArray(feedbackSummary && feedbackSummary.adaptationTriggers)\n  ? feedbackSummary.adaptationTriggers\n  : [];\nconst adaptationReasons = Array.isArray(feedbackSummary && feedbackSummary.adaptationReasons)\n  ? feedbackSummary.adaptationReasons\n  : [];\n\nconst runEvent = {\n  runId,\n  status: 'success',\n  attempt: content.__attempt ?? null,\n  weekStart: nextWeek.weekStart || null,\n  weekEnd: nextWeek.weekEnd || null,\n  errorCount: errors.length,\n  errors,\n  feedbackSummary,\n  feedbackAdaptationApplied: adaptationTriggers.length > 0,\n  adaptationTriggerCount: adaptationTriggers.length,\n  adaptationTriggers,\n  adaptationReasons,\n  createdAt: new Date().toISOString()\n};\n\nreturn [{\n  json: Object.assign({}, content, runEvent, { runEvent })\n}];\n"
       }
     },
     {
@@ -653,7 +690,7 @@
         "operation": "findOneAndUpdate",
         "collection": "run_events",
         "updateKey": "runId",
-        "fields": "runId, status, attempt, weekStart, weekEnd, errorCount, errors, telegramTemplateVersion, sectionCompleteness, sectionMissingCount, whyThisPlan, whyPlanMetricKeys, whyPlanHallucinationFailures, previewMode, previewChatId, riskWarningTriggerCount, riskWarningTriggers, riskWarningTriggerCounts, riskFeedback, createdAt",
+        "fields": "runId, status, attempt, weekStart, weekEnd, errorCount, errors, telegramTemplateVersion, sectionCompleteness, sectionMissingCount, whyThisPlan, whyPlanMetricKeys, whyPlanHallucinationFailures, previewMode, previewChatId, riskWarningTriggerCount, riskWarningTriggers, riskWarningTriggerCounts, riskFeedback, createdAt, feedbackSummary, feedbackAdaptationApplied, adaptationTriggerCount, adaptationTriggers, adaptationReasons",
         "upsert": true,
         "options": {
           "dateFields": "createdAt"
@@ -771,7 +808,7 @@
         "operation": "findOneAndUpdate",
         "collection": "run_artifacts",
         "updateKey": "runId",
-        "fields": "runId, promptVersion, modelId, prompt, metrics, history, activities, wellness, createdAt",
+        "fields": "runId, promptVersion, modelId, prompt, metrics, history, feedbackSummary, activities, wellness, createdAt",
         "upsert": true,
         "options": {
           "dateFields": "createdAt"
@@ -794,7 +831,7 @@
         128
       ],
       "parameters": {
-        "jsCode": "const content = items[0].json || {};\nconst runContextItems = $items(\"Prompt Builder\");\nconst runContext = runContextItems.length ? runContextItems[0].json : {};\n\nconst errors = Array.isArray(content.__errors) ? content.__errors : [];\nconst outputValidated = content.activityPlan ? {\n  schema_version: content.schema_version,\n  activityPlan: content.activityPlan,\n  justification: content.justification\n} : null;\n\nreturn [{\n  json: {\n    runId: runContext.runId || content.runId,\n    promptVersion: runContext.promptVersion || null,\n    modelId: runContext.modelId || null,\n    status: content.status || (content.__valid ? 'success' : 'failure'),\n    attempt: content.__attempt ?? null,\n    outputValidated,\n    outputRaw: content.__raw ?? null,\n    errors,\n    errorCount: errors.length,\n    updatedAt: new Date().toISOString()\n  }\n}];\n"
+        "jsCode": "const content = items[0].json || {};\nconst runContextItems = $items(\"Prompt Builder\");\nconst runContext = runContextItems.length ? runContextItems[0].json : {};\n\nconst errors = Array.isArray(content.__errors) ? content.__errors : [];\nconst outputValidated = content.activityPlan ? {\n  schema_version: content.schema_version,\n  activityPlan: content.activityPlan,\n  justification: content.justification\n} : null;\n\nconst feedbackSummary = runContext.feedbackSummary && typeof runContext.feedbackSummary === 'object'\n  ? runContext.feedbackSummary\n  : null;\nconst adaptationTriggers = Array.isArray(feedbackSummary && feedbackSummary.adaptationTriggers)\n  ? feedbackSummary.adaptationTriggers\n  : [];\n\nreturn [{\n  json: {\n    runId: runContext.runId || content.runId,\n    promptVersion: runContext.promptVersion || null,\n    modelId: runContext.modelId || null,\n    status: content.status || (content.__valid ? 'success' : 'failure'),\n    attempt: content.__attempt ?? null,\n    outputValidated,\n    outputRaw: content.__raw ?? null,\n    errors,\n    errorCount: errors.length,\n    feedbackSummary,\n    adaptationTriggers,\n    updatedAt: new Date().toISOString()\n  }\n}];\n"
       }
     },
     {
@@ -811,7 +848,7 @@
         "operation": "findOneAndUpdate",
         "collection": "run_artifacts",
         "updateKey": "runId",
-        "fields": "runId, promptVersion, modelId, status, attempt, outputValidated, outputRaw, errors, errorCount, updatedAt",
+        "fields": "runId, promptVersion, modelId, status, attempt, outputValidated, outputRaw, errors, errorCount, updatedAt, feedbackSummary, adaptationTriggers",
         "upsert": true,
         "options": {
           "dateFields": "updatedAt"
@@ -1153,7 +1190,7 @@
       "main": [
         [
           {
-            "node": "Prompt Builder",
+            "node": "Read Recent Feedback Summary",
             "type": "main",
             "index": 0
           }
@@ -1543,6 +1580,28 @@
         [
           {
             "node": "Send Feedback Ack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Recent Feedback Summary": {
+      "main": [
+        [
+          {
+            "node": "Summarize Recent Feedback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize Recent Feedback": {
+      "main": [
+        [
+          {
+            "node": "Prompt Builder",
             "type": "main",
             "index": 0
           }

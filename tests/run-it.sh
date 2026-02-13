@@ -177,7 +177,7 @@ seed_feedback_events() {
   stale_date="${stale_iso%%T*}"
 
   docker exec "$mid" mongosh --quiet "mongodb://localhost:27017/running_coach_itest" \
-    --eval "db.feedback_events.deleteMany({}); db.feedback_events.insertMany([{sessionKey:'itest-pain-recent-${recent_date}',sessionRef:'itest-prior-run-recent-111',runId:'itest-prior-run-recent',type:'pain',response:'pain',note:null,sessionDate:'${recent_date}',date:'${recent_date}',sessionDay:'Monday',day:'Monday',chatId:'730354404',messageId:111,userId:1,username:'itest',timestamp:'${now_iso}',receivedAt:'${now_iso}'},{sessionKey:'itest-pain-stale-${stale_date}',sessionRef:'itest-prior-run-stale-112',runId:'itest-prior-run-stale',type:'pain',response:'pain',note:null,sessionDate:'${stale_date}',date:'${stale_date}',sessionDay:'Monday',day:'Monday',chatId:'730354404',messageId:112,userId:1,username:'itest',timestamp:'${stale_iso}',receivedAt:'${stale_iso}'}]);" >/dev/null
+    --eval "db.feedback_events.deleteMany({}); db.feedback_events.insertMany([{sessionKey:'itest-pain-recent-${recent_date}',sessionRef:'itest-prior-run-recent-111',runId:'itest-prior-run-recent',type:'pain',response:'pain',note:null,sessionDate:'${recent_date}',date:'${recent_date}',sessionDay:'Monday',day:'Monday',chatId:'730354404',messageId:111,userId:1,username:'itest',timestamp:'${now_iso}',receivedAt:'${now_iso}'},{sessionKey:'itest-skipped-recent-a-${recent_date}',sessionRef:'itest-prior-run-recent-113',runId:'itest-prior-run-recent',type:'skipped',response:'skipped',note:null,sessionDate:'${recent_date}',date:'${recent_date}',sessionDay:'Tuesday',day:'Tuesday',chatId:'730354404',messageId:113,userId:1,username:'itest',timestamp:'${now_iso}',receivedAt:'${now_iso}'},{sessionKey:'itest-skipped-recent-b-${recent_date}',sessionRef:'itest-prior-run-recent-114',runId:'itest-prior-run-recent',type:'skipped',response:'skipped',note:null,sessionDate:'${recent_date}',date:'${recent_date}',sessionDay:'Wednesday',day:'Wednesday',chatId:'730354404',messageId:114,userId:1,username:'itest',timestamp:'${now_iso}',receivedAt:'${now_iso}'},{sessionKey:'itest-pain-stale-${stale_date}',sessionRef:'itest-prior-run-stale-112',runId:'itest-prior-run-stale',type:'pain',response:'pain',note:null,sessionDate:'${stale_date}',date:'${stale_date}',sessionDay:'Monday',day:'Monday',chatId:'730354404',messageId:112,userId:1,username:'itest',timestamp:'${stale_iso}',receivedAt:'${stale_iso}'}]);" >/dev/null
   echo "✅ feedback_events history seeded"
 }
 
@@ -687,6 +687,118 @@ print("✅ Pain-triggered risk metadata is present and time-windowed")
 PY
 }
 
+verify_feedback_adaptation_metadata() {
+  echo "▶️  Verifying feedback adaptation summary and triggers"
+
+  python3 - "$EXECUTION_LOG" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+log_path = sys.argv[1]
+text = Path(log_path).read_text()
+text = re.sub(r'\x1B\[[0-9;]*[A-Za-z]', '', text)
+decoder = json.JSONDecoder()
+candidate = None
+for match in re.finditer(r'\{', text):
+    idx = match.start()
+    try:
+        obj, _ = decoder.raw_decode(text[idx:])
+    except json.JSONDecodeError:
+        continue
+    if isinstance(obj, dict) and ("data" in obj or "resultData" in obj):
+        candidate = obj
+        break
+
+if candidate is None:
+    raise SystemExit("❌ Unable to find run data in execution log")
+
+data_root = candidate.get("data", candidate)
+run_data = data_root.get("resultData", {}).get("runData", {})
+
+prompt_runs = run_data.get("Prompt Builder") or []
+if not prompt_runs:
+    raise SystemExit("❌ Prompt Builder output not found")
+
+prompt_payload = None
+for run in prompt_runs:
+    main = run.get("data", {}).get("main", [])
+    if main and main[0]:
+        prompt_payload = main[0][0].get("json", {})
+        break
+
+if not prompt_payload:
+    raise SystemExit("❌ Prompt Builder payload is empty")
+
+feedback = prompt_payload.get("feedbackSummary")
+if not isinstance(feedback, dict):
+    raise SystemExit("❌ feedbackSummary missing from Prompt Builder output")
+
+counts = feedback.get("counts")
+if not isinstance(counts, dict):
+    raise SystemExit("❌ feedbackSummary.counts missing")
+if counts.get("pain") != 1:
+    raise SystemExit(f"❌ Expected recent pain count = 1, got {counts.get('pain')!r}")
+if counts.get("skipped", 0) < 2:
+    raise SystemExit(f"❌ Expected skipped count >= 2 for low adherence scenario, got {counts.get('skipped')!r}")
+
+if feedback.get("hasRecentPain") is not True:
+    raise SystemExit("❌ hasRecentPain should be true")
+if feedback.get("hasLowAdherence") is not True:
+    raise SystemExit("❌ hasLowAdherence should be true when skipped sessions are high")
+
+adherence_rate = feedback.get("adherenceRate")
+skip_rate = feedback.get("skipRate")
+if adherence_rate is None or adherence_rate >= 0.6:
+    raise SystemExit(f"❌ adherenceRate should indicate low adherence, got {adherence_rate!r}")
+if skip_rate is None or skip_rate <= 0.4:
+    raise SystemExit(f"❌ skipRate should indicate low adherence, got {skip_rate!r}")
+
+triggers = feedback.get("adaptationTriggers")
+if not isinstance(triggers, list):
+    raise SystemExit("❌ adaptationTriggers missing")
+expected_triggers = {"painReported", "lowAdherence"}
+if not expected_triggers.issubset(set(triggers)):
+    raise SystemExit(f"❌ adaptationTriggers missing expected values, got {triggers!r}")
+
+reasons = feedback.get("adaptationReasons")
+if not isinstance(reasons, list) or len(reasons) < 2:
+    raise SystemExit("❌ adaptationReasons should include both pain and adherence rationale")
+
+event_runs = run_data.get("Build Run Event (success)") or []
+if not event_runs:
+    raise SystemExit("❌ Build Run Event (success) output not found")
+
+event_payload = None
+for run in event_runs:
+    main = run.get("data", {}).get("main", [])
+    if main and main[0]:
+        event_payload = main[0][0].get("json", {})
+        break
+
+if not event_payload:
+    raise SystemExit("❌ Build Run Event payload is empty")
+
+if event_payload.get("feedbackAdaptationApplied") is not True:
+    raise SystemExit("❌ feedbackAdaptationApplied should be true")
+
+trigger_count = event_payload.get("adaptationTriggerCount")
+if not isinstance(trigger_count, int) or trigger_count < 2:
+    raise SystemExit(f"❌ adaptationTriggerCount should be >= 2, got {trigger_count!r}")
+
+event_triggers = event_payload.get("adaptationTriggers")
+if not isinstance(event_triggers, list) or not expected_triggers.issubset(set(event_triggers)):
+    raise SystemExit(f"❌ run event adaptationTriggers missing expected values, got {event_triggers!r}")
+
+event_feedback = event_payload.get("feedbackSummary")
+if not isinstance(event_feedback, dict) or event_feedback.get("hasLowAdherence") is not True:
+    raise SystemExit("❌ run event should persist feedbackSummary with hasLowAdherence=true")
+
+print("✅ Feedback adaptation summary and triggers are correct")
+PY
+}
+
 verify_feedback_quick_replies() {
   echo "▶️  Verifying quick-feedback buttons and callback parsing"
 
@@ -1013,5 +1125,6 @@ verify_telegram_template
 verify_why_this_plan
 verify_preview_mode_metadata
 verify_risk_warning_metadata
+verify_feedback_adaptation_metadata
 verify_feedback_quick_replies
 verify_feedback_event_storage_and_aggregation
