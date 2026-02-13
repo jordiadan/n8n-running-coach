@@ -9,7 +9,9 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = ROOT / "schemas" / "weekly_plan.schema.json"
+GOLDEN_WEEKS_SCHEMA_PATH = ROOT / "schemas" / "golden_weeks_dataset.schema.json"
 FIXTURES_DIR = ROOT / "tests" / "fixtures"
+GOLDEN_WEEKS_PATH = FIXTURES_DIR / "golden_weeks_dataset_v1.json"
 
 
 HARD_TOKENS = ["z4", "z5", "vo2", "interval", "umbral", "tempo", "threshold"]
@@ -30,6 +32,19 @@ RUN_TOKENS = [
     "continu",
 ]
 REQUIRED_DAYS = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
+PII_FORBIDDEN_KEYS = {
+    "name",
+    "firstName",
+    "lastName",
+    "fullName",
+    "email",
+    "phone",
+    "chatId",
+    "username",
+    "userId",
+    "telegramId",
+    "address",
+}
 
 
 def load_json(path: Path) -> dict:
@@ -153,6 +168,68 @@ def limit_checks(plan: dict) -> list[str]:
     return errors
 
 
+def _collect_forbidden_paths(payload: object, prefix: str = "") -> list[str]:
+    matches: list[str] = []
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            path = f"{prefix}.{key}" if prefix else str(key)
+            if key in PII_FORBIDDEN_KEYS:
+                matches.append(path)
+            matches.extend(_collect_forbidden_paths(value, path))
+    elif isinstance(payload, list):
+        for index, value in enumerate(payload):
+            path = f"{prefix}[{index}]"
+            matches.extend(_collect_forbidden_paths(value, path))
+    return matches
+
+
+def golden_weeks_checks() -> tuple[list[str], dict | None]:
+    errors: list[str] = []
+    metadata: dict | None = None
+
+    if not GOLDEN_WEEKS_PATH.exists():
+        return ["golden_weeks: missing tests/fixtures/golden_weeks_dataset_v1.json"], None
+    if not GOLDEN_WEEKS_SCHEMA_PATH.exists():
+        return ["golden_weeks: missing schemas/golden_weeks_dataset.schema.json"], None
+
+    schema = load_json(GOLDEN_WEEKS_SCHEMA_PATH)
+    dataset = load_json(GOLDEN_WEEKS_PATH)
+    validator = Draft202012Validator(schema, format_checker=FormatChecker())
+    schema_errors = sorted(validator.iter_errors(dataset), key=lambda err: list(err.absolute_path))
+    if schema_errors:
+        first = schema_errors[0]
+        where = ".".join(str(part) for part in first.absolute_path) or "<root>"
+        return [f"golden_weeks: schema validation failed at {where}: {first.message}"], None
+
+    fixtures = dataset.get("fixtures", [])
+    if not isinstance(fixtures, list):
+        return ["golden_weeks: fixtures must be an array"], None
+
+    fixture_ids = [str(item.get("fixtureId", "")) for item in fixtures if isinstance(item, dict)]
+    if len(set(fixture_ids)) != len(fixture_ids):
+        errors.append("golden_weeks: fixtureId values must be unique")
+
+    week_starts = [
+        str(item.get("week", {}).get("weekStart", ""))
+        for item in fixtures
+        if isinstance(item, dict) and isinstance(item.get("week"), dict)
+    ]
+    if len(set(week_starts)) != len(week_starts):
+        errors.append("golden_weeks: week.weekStart values must be unique")
+
+    pii_paths = _collect_forbidden_paths(dataset)
+    if pii_paths:
+        sample = ", ".join(pii_paths[:5])
+        errors.append(f"golden_weeks: forbidden PII-like keys detected ({sample})")
+
+    metadata = {
+        "datasetVersion": str(dataset.get("datasetVersion", "unknown")),
+        "fixtureCount": len(fixtures),
+        "fixtureIds": fixture_ids,
+    }
+    return errors, metadata
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--summary", help="Write markdown summary to this path.")
@@ -186,18 +263,29 @@ def main() -> int:
 
         lengths.append(len(json.dumps(data, ensure_ascii=False, separators=(",", ":"))))
 
-    total = len(valid_paths)
-    passed = total - len(failures)
+    golden_errors, golden_meta = golden_weeks_checks()
+    failures.extend(golden_errors)
+    golden_ok = not golden_errors
+
+    weekly_fixture_total = len(valid_paths)
+    total_checks = weekly_fixture_total + 1  # golden weeks dataset validation
+    passed = total_checks - len(failures)
 
     lines = [
         "## Evaluation Harness",
-        f"- Fixtures checked: {total}",
+        f"- Weekly plan fixtures checked: {weekly_fixture_total}",
+        "- Golden weeks checks: 1",
         f"- Passed: {passed}",
         f"- Failed: {len(failures)}",
     ]
     if lengths:
         avg = sum(lengths) / len(lengths)
         lines.append(f"- Average JSON length: {avg:.1f} chars")
+    lines.append(f"- Golden weeks dataset check: {'pass' if golden_ok else 'fail'}")
+    if golden_meta:
+        lines.append(f"- Golden weeks dataset version: {golden_meta['datasetVersion']}")
+        lines.append(f"- Golden weeks fixture count: {golden_meta['fixtureCount']}")
+        lines.append("- Golden weeks fixture IDs: " + ", ".join(golden_meta["fixtureIds"]))
 
     if failures:
         lines.append("\n### Failures")
