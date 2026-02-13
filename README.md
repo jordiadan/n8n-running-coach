@@ -60,8 +60,11 @@ Main workflow file: `workflows/running_coach_workflow.json`
 - `tests/mockserver-expectations.json`: mocked API payloads for tests.
 - `tests/credentials/mongo.json`: n8n credential fixture for Mongo tests.
 - `schemas/weekly_plan.schema.json`: JSON Schema for weekly plan output.
+- `schemas/golden_weeks_dataset.schema.json`: JSON Schema for anonymized weekly golden fixtures.
 - `docs/weekly_plan_schema.md`: Schema documentation and usage.
+- `docs/golden_fixtures.md`: provenance, anonymization, and update policy for golden fixtures.
 - `tests/fixtures/weekly_plan_*.json`: schema validation fixtures.
+- `tests/fixtures/golden_weeks_dataset_v1.json`: anonymized weekly fixtures used by the eval harness.
 - `docker-compose.itest.yml`: test stack (n8n + mongo + mockserver).
 - `Dockerfile`: n8n image definition.
 - `fly.toml`: Fly.io app config.
@@ -226,6 +229,7 @@ For complete rules, see:
 - Only one long run; long run cannot be hard intensity.
 - Gym/strength work is expected on Tuesday, Thursday, and Saturday.
 - Evaluation harness checks schema + guardrails + diversity + limits on fixtures in CI.
+- Evaluation harness also validates golden weekly fixture schema and publishes dataset version/inventory in CI summary.
 
 ## Security Considerations
 

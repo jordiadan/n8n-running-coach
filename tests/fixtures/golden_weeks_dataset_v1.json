@@ -1,0 +1,232 @@
+{
+  "datasetVersion": "v1",
+  "generatedAt": "2026-02-13",
+  "anonymization": {
+    "strategy": "Direct identifiers removed and replaced with synthetic persona IDs.",
+    "piiRemoved": true,
+    "notes": "Values are scaled from historical distributions and manually reviewed for privacy."
+  },
+  "fixtures": [
+    {
+      "fixtureId": "gw-001",
+      "athleteProfile": {
+        "personaId": "persona-endurance-a",
+        "ageBand": "30-39",
+        "experienceLevel": "intermediate",
+        "primaryGoal": "10k"
+      },
+      "week": {
+        "weekStart": "2025-09-01",
+        "weekEnd": "2025-09-07"
+      },
+      "weeklyMetrics": {
+        "runCount": 4,
+        "runDistanceKm": 38.7,
+        "runTimeMin": 242,
+        "ctlMean": 61.5,
+        "atlMean": 66.8,
+        "hrvMean": 67.2,
+        "restHrMean": 52.1,
+        "sleepScoreMean": 79.4
+      },
+      "activities": [
+        {"date": "2025-09-01", "day": "Monday", "activityType": "easy_run", "durationMin": 45, "intensity": "z2", "notes": "cadence focus"},
+        {"date": "2025-09-02", "day": "Tuesday", "activityType": "strength", "durationMin": 50, "intensity": "strength"},
+        {"date": "2025-09-03", "day": "Wednesday", "activityType": "intervals", "durationMin": 52, "intensity": "z4"},
+        {"date": "2025-09-05", "day": "Friday", "activityType": "tempo", "durationMin": 40, "intensity": "z3"},
+        {"date": "2025-09-07", "day": "Sunday", "activityType": "long_run", "durationMin": 85, "intensity": "z2"}
+      ],
+      "wellness": [
+        {"date": "2025-09-01", "sleepScore": 82, "restHr": 51, "hrv": 69, "energy": 4, "soreness": 2},
+        {"date": "2025-09-02", "sleepScore": 78, "restHr": 52, "hrv": 67, "energy": 4, "soreness": 2},
+        {"date": "2025-09-03", "sleepScore": 76, "restHr": 53, "hrv": 65, "energy": 3, "soreness": 3},
+        {"date": "2025-09-04", "sleepScore": 80, "restHr": 52, "hrv": 68, "energy": 4, "soreness": 2},
+        {"date": "2025-09-05", "sleepScore": 77, "restHr": 53, "hrv": 66, "energy": 3, "soreness": 3},
+        {"date": "2025-09-06", "sleepScore": 81, "restHr": 51, "hrv": 69, "energy": 4, "soreness": 2},
+        {"date": "2025-09-07", "sleepScore": 82, "restHr": 52, "hrv": 67, "energy": 4, "soreness": 2}
+      ],
+      "outcome": {
+        "adherenceBand": "high",
+        "painReported": false,
+        "rpeTrend": "stable"
+      }
+    },
+    {
+      "fixtureId": "gw-002",
+      "athleteProfile": {
+        "personaId": "persona-endurance-b",
+        "ageBand": "40-49",
+        "experienceLevel": "advanced",
+        "primaryGoal": "half_marathon"
+      },
+      "week": {
+        "weekStart": "2025-09-08",
+        "weekEnd": "2025-09-14"
+      },
+      "weeklyMetrics": {
+        "runCount": 5,
+        "runDistanceKm": 52.4,
+        "runTimeMin": 311,
+        "ctlMean": 72.4,
+        "atlMean": 75.1,
+        "hrvMean": 64.1,
+        "restHrMean": 49.8,
+        "sleepScoreMean": 76.9
+      },
+      "activities": [
+        {"date": "2025-09-08", "day": "Monday", "activityType": "easy_run", "durationMin": 50, "intensity": "z2"},
+        {"date": "2025-09-09", "day": "Tuesday", "activityType": "strength", "durationMin": 45, "intensity": "strength"},
+        {"date": "2025-09-10", "day": "Wednesday", "activityType": "tempo", "durationMin": 48, "intensity": "z3"},
+        {"date": "2025-09-12", "day": "Friday", "activityType": "intervals", "durationMin": 56, "intensity": "z4"},
+        {"date": "2025-09-14", "day": "Sunday", "activityType": "long_run", "durationMin": 98, "intensity": "z2"}
+      ],
+      "wellness": [
+        {"date": "2025-09-08", "sleepScore": 75, "restHr": 50, "hrv": 63, "energy": 4, "soreness": 2},
+        {"date": "2025-09-09", "sleepScore": 77, "restHr": 50, "hrv": 64, "energy": 4, "soreness": 2},
+        {"date": "2025-09-10", "sleepScore": 74, "restHr": 51, "hrv": 62, "energy": 3, "soreness": 3},
+        {"date": "2025-09-11", "sleepScore": 76, "restHr": 50, "hrv": 64, "energy": 4, "soreness": 2},
+        {"date": "2025-09-12", "sleepScore": 78, "restHr": 49, "hrv": 66, "energy": 4, "soreness": 2},
+        {"date": "2025-09-13", "sleepScore": 77, "restHr": 49, "hrv": 65, "energy": 4, "soreness": 2},
+        {"date": "2025-09-14", "sleepScore": 81, "restHr": 49, "hrv": 65, "energy": 4, "soreness": 2}
+      ],
+      "outcome": {
+        "adherenceBand": "high",
+        "painReported": false,
+        "rpeTrend": "up"
+      }
+    },
+    {
+      "fixtureId": "gw-003",
+      "athleteProfile": {
+        "personaId": "persona-balance-c",
+        "ageBand": "30-39",
+        "experienceLevel": "intermediate",
+        "primaryGoal": "general_fitness"
+      },
+      "week": {
+        "weekStart": "2025-09-15",
+        "weekEnd": "2025-09-21"
+      },
+      "weeklyMetrics": {
+        "runCount": 3,
+        "runDistanceKm": 24.8,
+        "runTimeMin": 170,
+        "ctlMean": 48.7,
+        "atlMean": 51.2,
+        "hrvMean": 71.3,
+        "restHrMean": 55.0,
+        "sleepScoreMean": 82.2
+      },
+      "activities": [
+        {"date": "2025-09-15", "day": "Monday", "activityType": "easy_run", "durationMin": 38, "intensity": "z2"},
+        {"date": "2025-09-16", "day": "Tuesday", "activityType": "strength", "durationMin": 40, "intensity": "strength"},
+        {"date": "2025-09-18", "day": "Thursday", "activityType": "cross_training", "durationMin": 45, "intensity": "z2"},
+        {"date": "2025-09-19", "day": "Friday", "activityType": "tempo", "durationMin": 34, "intensity": "z3"},
+        {"date": "2025-09-21", "day": "Sunday", "activityType": "long_run", "durationMin": 72, "intensity": "z2"}
+      ],
+      "wellness": [
+        {"date": "2025-09-15", "sleepScore": 84, "restHr": 54, "hrv": 73, "energy": 4, "soreness": 2},
+        {"date": "2025-09-16", "sleepScore": 83, "restHr": 55, "hrv": 72, "energy": 4, "soreness": 2},
+        {"date": "2025-09-17", "sleepScore": 81, "restHr": 55, "hrv": 70, "energy": 3, "soreness": 2},
+        {"date": "2025-09-18", "sleepScore": 80, "restHr": 56, "hrv": 69, "energy": 3, "soreness": 2},
+        {"date": "2025-09-19", "sleepScore": 82, "restHr": 55, "hrv": 71, "energy": 4, "soreness": 2},
+        {"date": "2025-09-20", "sleepScore": 83, "restHr": 54, "hrv": 72, "energy": 4, "soreness": 2},
+        {"date": "2025-09-21", "sleepScore": 82, "restHr": 56, "hrv": 72, "energy": 4, "soreness": 2}
+      ],
+      "outcome": {
+        "adherenceBand": "medium",
+        "painReported": false,
+        "rpeTrend": "stable"
+      }
+    },
+    {
+      "fixtureId": "gw-004",
+      "athleteProfile": {
+        "personaId": "persona-rebuild-d",
+        "ageBand": "50-59",
+        "experienceLevel": "beginner",
+        "primaryGoal": "5k"
+      },
+      "week": {
+        "weekStart": "2025-09-22",
+        "weekEnd": "2025-09-28"
+      },
+      "weeklyMetrics": {
+        "runCount": 3,
+        "runDistanceKm": 17.9,
+        "runTimeMin": 136,
+        "ctlMean": 34.6,
+        "atlMean": 37.8,
+        "hrvMean": 58.5,
+        "restHrMean": 59.7,
+        "sleepScoreMean": 73.1
+      },
+      "activities": [
+        {"date": "2025-09-22", "day": "Monday", "activityType": "easy_run", "durationMin": 32, "intensity": "z2"},
+        {"date": "2025-09-23", "day": "Tuesday", "activityType": "strength", "durationMin": 35, "intensity": "strength"},
+        {"date": "2025-09-25", "day": "Thursday", "activityType": "intervals", "durationMin": 30, "intensity": "z4", "notes": "short reps"},
+        {"date": "2025-09-27", "day": "Saturday", "activityType": "strength", "durationMin": 30, "intensity": "strength"},
+        {"date": "2025-09-28", "day": "Sunday", "activityType": "long_run", "durationMin": 54, "intensity": "z2"}
+      ],
+      "wellness": [
+        {"date": "2025-09-22", "sleepScore": 72, "restHr": 60, "hrv": 57, "energy": 3, "soreness": 3},
+        {"date": "2025-09-23", "sleepScore": 74, "restHr": 59, "hrv": 58, "energy": 3, "soreness": 3},
+        {"date": "2025-09-24", "sleepScore": 73, "restHr": 60, "hrv": 58, "energy": 3, "soreness": 3},
+        {"date": "2025-09-25", "sleepScore": 71, "restHr": 61, "hrv": 56, "energy": 2, "soreness": 4},
+        {"date": "2025-09-26", "sleepScore": 74, "restHr": 60, "hrv": 58, "energy": 3, "soreness": 3},
+        {"date": "2025-09-27", "sleepScore": 75, "restHr": 59, "hrv": 59, "energy": 3, "soreness": 3},
+        {"date": "2025-09-28", "sleepScore": 73, "restHr": 59, "hrv": 59, "energy": 3, "soreness": 3}
+      ],
+      "outcome": {
+        "adherenceBand": "medium",
+        "painReported": true,
+        "rpeTrend": "up"
+      }
+    },
+    {
+      "fixtureId": "gw-005",
+      "athleteProfile": {
+        "personaId": "persona-marathon-e",
+        "ageBand": "40-49",
+        "experienceLevel": "advanced",
+        "primaryGoal": "marathon"
+      },
+      "week": {
+        "weekStart": "2025-09-29",
+        "weekEnd": "2025-10-05"
+      },
+      "weeklyMetrics": {
+        "runCount": 6,
+        "runDistanceKm": 68.2,
+        "runTimeMin": 402,
+        "ctlMean": 81.7,
+        "atlMean": 86.2,
+        "hrvMean": 61.9,
+        "restHrMean": 48.6,
+        "sleepScoreMean": 74.5
+      },
+      "activities": [
+        {"date": "2025-09-29", "day": "Monday", "activityType": "easy_run", "durationMin": 50, "intensity": "z2"},
+        {"date": "2025-09-30", "day": "Tuesday", "activityType": "strength", "durationMin": 42, "intensity": "strength"},
+        {"date": "2025-10-01", "day": "Wednesday", "activityType": "intervals", "durationMin": 64, "intensity": "z4"},
+        {"date": "2025-10-02", "day": "Thursday", "activityType": "easy_run", "durationMin": 42, "intensity": "z2"},
+        {"date": "2025-10-03", "day": "Friday", "activityType": "tempo", "durationMin": 55, "intensity": "z3"},
+        {"date": "2025-10-05", "day": "Sunday", "activityType": "long_run", "durationMin": 125, "intensity": "z2"}
+      ],
+      "wellness": [
+        {"date": "2025-09-29", "sleepScore": 76, "restHr": 48, "hrv": 63, "energy": 4, "soreness": 2},
+        {"date": "2025-09-30", "sleepScore": 74, "restHr": 49, "hrv": 62, "energy": 3, "soreness": 3},
+        {"date": "2025-10-01", "sleepScore": 72, "restHr": 50, "hrv": 60, "energy": 3, "soreness": 3},
+        {"date": "2025-10-02", "sleepScore": 74, "restHr": 49, "hrv": 61, "energy": 3, "soreness": 3},
+        {"date": "2025-10-03", "sleepScore": 73, "restHr": 49, "hrv": 61, "energy": 3, "soreness": 3},
+        {"date": "2025-10-04", "sleepScore": 76, "restHr": 48, "hrv": 63, "energy": 4, "soreness": 2},
+        {"date": "2025-10-05", "sleepScore": 76, "restHr": 48, "hrv": 63, "energy": 4, "soreness": 2}
+      ],
+      "outcome": {
+        "adherenceBand": "high",
+        "painReported": false,
+        "rpeTrend": "up"
+      }
+    }
+  ]
+}

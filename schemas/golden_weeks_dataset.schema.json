@@ -1,0 +1,336 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Golden Weeks Dataset",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "datasetVersion",
+    "generatedAt",
+    "anonymization",
+    "fixtures"
+  ],
+  "properties": {
+    "datasetVersion": {
+      "type": "string",
+      "pattern": "^v[0-9]+$"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date"
+    },
+    "anonymization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategy",
+        "piiRemoved",
+        "notes"
+      ],
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "minLength": 10
+        },
+        "piiRemoved": {
+          "type": "boolean",
+          "const": true
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 10
+        }
+      }
+    },
+    "fixtures": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 10,
+      "items": {
+        "$ref": "#/$defs/weeklyFixture"
+      }
+    }
+  },
+  "$defs": {
+    "weeklyFixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixtureId",
+        "athleteProfile",
+        "week",
+        "weeklyMetrics",
+        "activities",
+        "wellness",
+        "outcome"
+      ],
+      "properties": {
+        "fixtureId": {
+          "type": "string",
+          "pattern": "^gw-[0-9]{3}$"
+        },
+        "athleteProfile": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "personaId",
+            "ageBand",
+            "experienceLevel",
+            "primaryGoal"
+          ],
+          "properties": {
+            "personaId": {
+              "type": "string",
+              "pattern": "^persona-[a-z0-9-]+$"
+            },
+            "ageBand": {
+              "type": "string",
+              "enum": [
+                "20-29",
+                "30-39",
+                "40-49",
+                "50-59"
+              ]
+            },
+            "experienceLevel": {
+              "type": "string",
+              "enum": [
+                "beginner",
+                "intermediate",
+                "advanced"
+              ]
+            },
+            "primaryGoal": {
+              "type": "string",
+              "enum": [
+                "5k",
+                "10k",
+                "half_marathon",
+                "marathon",
+                "general_fitness"
+              ]
+            }
+          }
+        },
+        "week": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "weekStart",
+            "weekEnd"
+          ],
+          "properties": {
+            "weekStart": {
+              "type": "string",
+              "format": "date"
+            },
+            "weekEnd": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        },
+        "weeklyMetrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "runCount",
+            "runDistanceKm",
+            "runTimeMin",
+            "ctlMean",
+            "atlMean",
+            "hrvMean",
+            "restHrMean",
+            "sleepScoreMean"
+          ],
+          "properties": {
+            "runCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 14
+            },
+            "runDistanceKm": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 300
+            },
+            "runTimeMin": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2000
+            },
+            "ctlMean": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 250
+            },
+            "atlMean": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 250
+            },
+            "hrvMean": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 250
+            },
+            "restHrMean": {
+              "type": "number",
+              "minimum": 20,
+              "maximum": 100
+            },
+            "sleepScoreMean": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            }
+          }
+        },
+        "activities": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 10,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "date",
+              "day",
+              "activityType",
+              "durationMin",
+              "intensity"
+            ],
+            "properties": {
+              "date": {
+                "type": "string",
+                "format": "date"
+              },
+              "day": {
+                "type": "string",
+                "enum": [
+                  "Monday",
+                  "Tuesday",
+                  "Wednesday",
+                  "Thursday",
+                  "Friday",
+                  "Saturday",
+                  "Sunday"
+                ]
+              },
+              "activityType": {
+                "type": "string",
+                "enum": [
+                  "easy_run",
+                  "tempo",
+                  "intervals",
+                  "long_run",
+                  "strength",
+                  "rest",
+                  "cross_training"
+                ]
+              },
+              "durationMin": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 240
+              },
+              "intensity": {
+                "type": "string",
+                "enum": [
+                  "rest",
+                  "z1",
+                  "z2",
+                  "z3",
+                  "z4",
+                  "z5",
+                  "strength"
+                ]
+              },
+              "notes": {
+                "type": "string",
+                "maxLength": 120
+              }
+            }
+          }
+        },
+        "wellness": {
+          "type": "array",
+          "minItems": 7,
+          "maxItems": 7,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "date",
+              "sleepScore",
+              "restHr",
+              "hrv",
+              "energy",
+              "soreness"
+            ],
+            "properties": {
+              "date": {
+                "type": "string",
+                "format": "date"
+              },
+              "sleepScore": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "restHr": {
+                "type": "number",
+                "minimum": 20,
+                "maximum": 100
+              },
+              "hrv": {
+                "type": "number",
+                "minimum": 10,
+                "maximum": 220
+              },
+              "energy": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              },
+              "soreness": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              }
+            }
+          }
+        },
+        "outcome": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "adherenceBand",
+            "painReported",
+            "rpeTrend"
+          ],
+          "properties": {
+            "adherenceBand": {
+              "type": "string",
+              "enum": [
+                "high",
+                "medium",
+                "low"
+              ]
+            },
+            "painReported": {
+              "type": "boolean"
+            },
+            "rpeTrend": {
+              "type": "string",
+              "enum": [
+                "down",
+                "stable",
+                "up"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}
