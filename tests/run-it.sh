@@ -470,6 +470,7 @@ if not payload:
 html = payload.get("htmlMessage") or ""
 required_sections = [
     "<b>Last-week summary</b>",
+    "<b>Weekly adherence</b>",
     "<b>This-week goal</b>",
     "<b>Daily plan</b>",
     "<b>Key session</b>",
@@ -480,11 +481,11 @@ if missing:
     raise SystemExit("❌ Missing fixed Telegram sections: " + ", ".join(missing))
 
 template_version = payload.get("telegramTemplateVersion")
-if template_version != "telegram-v2.0":
+if template_version != "telegram-v2.1":
     raise SystemExit(f"❌ Unexpected telegramTemplateVersion: {template_version!r}")
 
 completeness = payload.get("sectionCompleteness")
-required_keys = {"lastWeekSummary", "thisWeekGoal", "dailyPlan", "keySession", "warnings"}
+required_keys = {"lastWeekSummary", "weeklyAdherence", "thisWeekGoal", "dailyPlan", "keySession", "warnings"}
 if not isinstance(completeness, dict):
     raise SystemExit("❌ sectionCompleteness is missing or invalid")
 missing_keys = sorted(required_keys - set(completeness.keys()))
@@ -494,6 +495,16 @@ if missing_keys:
 missing_count = payload.get("sectionMissingCount")
 if not isinstance(missing_count, int):
     raise SystemExit("❌ sectionMissingCount is missing or invalid")
+
+weekly = payload.get("weeklyAdherenceSummary")
+if not isinstance(weekly, dict):
+    raise SystemExit("❌ weeklyAdherenceSummary is missing or invalid")
+counts = weekly.get("counts")
+if not isinstance(counts, dict):
+    raise SystemExit("❌ weeklyAdherenceSummary.counts is missing or invalid")
+for key in ("done", "skipped", "hard", "pain"):
+    if key not in counts:
+        raise SystemExit(f"❌ weeklyAdherenceSummary.counts missing key: {key}")
 
 print("✅ Telegram template includes all fixed sections and observability fields")
 PY
