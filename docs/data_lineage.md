@@ -36,19 +36,26 @@ Written by:
 - `Parse Feedback` + `Feedback Events DB` (MongoDB node).
 
 Fields (top-level):
-- `sessionKey` (string, unique): `${runId}-${sessionDate}` for idempotency.
+- `sessionKey` (string, unique): `${runId}-${messageId|sessionDate}-${userId|anon}` for idempotency.
+- `sessionRef` (string): `${runId}-${messageId|sessionDate}` reference for a prompted session.
 - `runId` (string): links feedback to the originating plan run.
-- `response` (string): `done`, `skipped`, `hard`, or `pain`.
+- `type` (string): `done`, `skipped`, `hard`, or `pain`.
+- `response` (string): backward-compatible alias of `type`.
+- `note` (string | null): optional user note (when provided in callback payload).
 - `sessionDate` (string): `YYYY-MM-DD` derived from Telegram message timestamp.
+- `date` (string): alias of `sessionDate`.
 - `sessionDay` (string): weekday label (e.g., `Monday`).
+- `day` (string): alias of `sessionDay`.
 - `chatId` (string | null): Telegram chat ID.
 - `messageId` (number | null): Telegram message ID.
 - `userId` (string | number | null): Telegram user ID.
 - `username` (string | null): Telegram username.
+- `timestamp` (string): ISO timestamp when feedback was received.
 - `receivedAt` (string): ISO timestamp when feedback was received.
 
 Notes:
 - The workflow uses `findOneAndUpdate` with `updateKey: sessionKey` to prevent duplicates.
+- Late feedback (`isLateResponse=true`) is acknowledged but not persisted.
 
 ### weekly_metrics
 
@@ -125,7 +132,8 @@ Recommended indexes for `run_events`:
 
 Recommended indexes for `feedback_events`:
 - Unique: `{ sessionKey: 1 }`
-- Run lookups: `{ runId: 1, receivedAt: -1 }`
+- Date lookups: `{ sessionDate: 1, receivedAt: -1 }`
+- Session/day lookups: `{ runId: 1, sessionDay: 1, receivedAt: -1 }`
 - TTL: `{ receivedAt: 1 }` (180 days)
 
 Recommended indexes for `weekly_metrics`:
@@ -147,6 +155,12 @@ Recommended indexes for `run_artifacts`:
 - `weekly_metrics`: keep at least 12 months to preserve training trends.
 - `plan_snapshots`: keep at least 12 months for audit and comparison.
 - `run_artifacts`: keep at least 12 months for audit and debugging.
+
+## Observability Guidance
+
+- `feedback_event_write_success_rate`:
+  - Numerator: count of non-late feedback callbacks written to `feedback_events`.
+  - Denominator: count of non-late feedback callbacks received by `Parse Feedback`.
 
 ## Bootstrap
 
