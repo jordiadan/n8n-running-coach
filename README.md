@@ -226,6 +226,7 @@ For complete rules, see:
 - Only one long run; long run cannot be hard intensity.
 - Gym/strength work is expected on Tuesday, Thursday, and Saturday.
 - Evaluation harness checks schema + guardrails + diversity + limits on fixtures in CI.
+- CI publishes a machine-readable quality report artifact (`quality-check-report`) with per-check status and `quality_check_failure_rate`.
 
 ## Security Considerations
 

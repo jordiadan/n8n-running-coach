@@ -26,7 +26,19 @@ jobs:
         run: python tests/schema_test.py
 
       - name: Evaluation harness
-        run: python tests/eval_harness.py --summary "$GITHUB_STEP_SUMMARY"
+        run: |
+          mkdir -p .artifacts
+          python tests/eval_harness.py \
+            --summary "$GITHUB_STEP_SUMMARY" \
+            --report ".artifacts/quality-check-report.json"
+
+      - name: Upload quality report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-check-report
+          path: .artifacts/quality-check-report.json
+          if-no-files-found: ignore
 
       - name: Prompt version check
         run: python tests/check_prompt_version.py
