@@ -863,6 +863,42 @@ if artifact_payload.get("structuredLogCount") != structured_count:
 if artifact_payload.get("structuredLogCoverageRate") != coverage_rate:
     raise SystemExit("❌ run artifact structuredLogCoverageRate should match run event")
 
+core_metrics = event_payload.get("coreMetrics")
+if not isinstance(core_metrics, dict):
+    raise SystemExit("❌ coreMetrics missing from run event")
+for key in ("successRate", "retryCount", "invalidJsonRate", "latencyMs"):
+    if key not in core_metrics:
+        raise SystemExit(f"❌ coreMetrics missing key: {key}")
+if core_metrics.get("successRate") != 1:
+    raise SystemExit(f"❌ coreMetrics.successRate should be 1 for success path, got {core_metrics.get('successRate')!r}")
+if not isinstance(core_metrics.get("retryCount"), int) or core_metrics.get("retryCount") < 0:
+    raise SystemExit("❌ coreMetrics.retryCount should be a non-negative integer")
+if not isinstance(core_metrics.get("invalidJsonRate"), (int, float)):
+    raise SystemExit("❌ coreMetrics.invalidJsonRate should be numeric")
+if not isinstance(core_metrics.get("latencyMs"), (int, float)) or core_metrics.get("latencyMs") < 0:
+    raise SystemExit("❌ coreMetrics.latencyMs should be a non-negative number")
+
+thresholds = event_payload.get("coreMetricThresholds")
+if not isinstance(thresholds, dict):
+    raise SystemExit("❌ coreMetricThresholds missing from run event")
+for key in ("minSuccessRate", "maxRetries", "maxInvalidJsonRate", "maxLatencyMs"):
+    if key not in thresholds:
+        raise SystemExit(f"❌ coreMetricThresholds missing key: {key}")
+
+report_payload = event_payload.get("coreMetricsReport")
+if not isinstance(report_payload, dict):
+    raise SystemExit("❌ coreMetricsReport missing from run event")
+report_metrics = report_payload.get("metrics")
+if not isinstance(report_metrics, dict):
+    raise SystemExit("❌ coreMetricsReport.metrics is missing or invalid")
+
+artifact_core_metrics = artifact_payload.get("coreMetrics")
+if not isinstance(artifact_core_metrics, dict):
+    raise SystemExit("❌ coreMetrics missing from run artifact")
+for key in ("successRate", "retryCount", "invalidJsonRate", "latencyMs"):
+    if artifact_core_metrics.get(key) != core_metrics.get(key):
+        raise SystemExit(f"❌ run artifact coreMetrics.{key} should align with run event")
+
 failure_runs = run_data.get("Build Failure Event") or []
 if failure_runs:
     failure_payload = None
@@ -883,6 +919,13 @@ if failure_runs:
                 raise SystemExit(f"❌ failure structured log entry missing fields: {sorted(missing_log_fields)}")
             if str(entry.get("status")) != "failure":
                 raise SystemExit("❌ failure structured log status must be 'failure'")
+        failure_core_metrics = failure_payload.get("coreMetrics")
+        if not isinstance(failure_core_metrics, dict):
+            raise SystemExit("❌ failure coreMetrics should be present when failure path runs")
+        if failure_core_metrics.get("successRate") != 0:
+            raise SystemExit("❌ failure coreMetrics.successRate should be 0")
+        if not isinstance(failure_core_metrics.get("invalidJsonRate"), (int, float)):
+            raise SystemExit("❌ failure coreMetrics.invalidJsonRate should be numeric")
 
 print("✅ Feedback adaptation summary and triggers are correct")
 PY
