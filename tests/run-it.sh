@@ -863,6 +863,66 @@ if artifact_payload.get("structuredLogCount") != structured_count:
 if artifact_payload.get("structuredLogCoverageRate") != coverage_rate:
     raise SystemExit("❌ run artifact structuredLogCoverageRate should match run event")
 
+delivery_health = event_payload.get("deliveryHealth")
+if not isinstance(delivery_health, dict):
+    raise SystemExit("❌ deliveryHealth missing from run event")
+for key in (
+    "expectedWeeklyRun",
+    "delivered",
+    "slaWindowMinutes",
+    "runDurationMs",
+    "withinSla",
+    "missed",
+    "weeklyDeliveryMissCount",
+    "alertSent",
+    "alertSentRate",
+):
+    if key not in delivery_health:
+        raise SystemExit(f"❌ deliveryHealth missing key: {key}")
+
+if delivery_health.get("expectedWeeklyRun") is not True:
+    raise SystemExit("❌ deliveryHealth.expectedWeeklyRun should be true")
+if delivery_health.get("delivered") is not True:
+    raise SystemExit("❌ deliveryHealth.delivered should be true on success path")
+if not isinstance(delivery_health.get("slaWindowMinutes"), int) or delivery_health.get("slaWindowMinutes") < 1:
+    raise SystemExit("❌ deliveryHealth.slaWindowMinutes should be a positive integer")
+if delivery_health.get("runDurationMs") != event_payload.get("runDurationMs"):
+    raise SystemExit("❌ deliveryHealth.runDurationMs should mirror runDurationMs")
+if not isinstance(delivery_health.get("withinSla"), bool):
+    raise SystemExit("❌ deliveryHealth.withinSla should be boolean")
+if not isinstance(delivery_health.get("missed"), bool):
+    raise SystemExit("❌ deliveryHealth.missed should be boolean")
+if delivery_health.get("alertSent") is not False:
+    raise SystemExit("❌ deliveryHealth.alertSent should be false on success path")
+
+expected_miss_count = 0 if (delivery_health.get("delivered") and delivery_health.get("withinSla")) else 1
+if event_payload.get("weekly_delivery_miss_count") != expected_miss_count:
+    raise SystemExit(
+        "❌ weekly_delivery_miss_count should align with delivered/withinSla "
+        f"({expected_miss_count}), got {event_payload.get('weekly_delivery_miss_count')!r}"
+    )
+if delivery_health.get("weeklyDeliveryMissCount") != expected_miss_count:
+    raise SystemExit(
+        "❌ deliveryHealth.weeklyDeliveryMissCount should align with delivered/withinSla "
+        f"({expected_miss_count}), got {delivery_health.get('weeklyDeliveryMissCount')!r}"
+    )
+
+alert_sent_rate = event_payload.get("alert_sent_rate")
+if alert_sent_rate != 0:
+    raise SystemExit(f"❌ alert_sent_rate should be 0 on success path, got {alert_sent_rate!r}")
+if delivery_health.get("alertSentRate") != alert_sent_rate:
+    raise SystemExit("❌ deliveryHealth.alertSentRate should mirror alert_sent_rate")
+
+artifact_delivery = artifact_payload.get("deliveryHealth")
+if not isinstance(artifact_delivery, dict):
+    raise SystemExit("❌ deliveryHealth missing from run artifact")
+if artifact_payload.get("weekly_delivery_miss_count") != event_payload.get("weekly_delivery_miss_count"):
+    raise SystemExit("❌ run artifact weekly_delivery_miss_count should match run event")
+if artifact_payload.get("alert_sent_rate") != event_payload.get("alert_sent_rate"):
+    raise SystemExit("❌ run artifact alert_sent_rate should match run event")
+if artifact_delivery.get("alertSentRate") != delivery_health.get("alertSentRate"):
+    raise SystemExit("❌ run artifact deliveryHealth.alertSentRate should match run event")
+
 core_metrics = event_payload.get("coreMetrics")
 if not isinstance(core_metrics, dict):
     raise SystemExit("❌ coreMetrics missing from run event")
@@ -975,8 +1035,86 @@ if failure_runs:
             raise SystemExit("❌ failure coreMetrics.successRate should be 0")
         if not isinstance(failure_core_metrics.get("invalidJsonRate"), (int, float)):
             raise SystemExit("❌ failure coreMetrics.invalidJsonRate should be numeric")
+        failure_delivery = failure_payload.get("deliveryHealth")
+        if not isinstance(failure_delivery, dict):
+            raise SystemExit("❌ failure deliveryHealth should be present when failure path runs")
+        if failure_delivery.get("delivered") is not False:
+            raise SystemExit("❌ failure deliveryHealth.delivered should be false")
+        if failure_payload.get("weekly_delivery_miss_count") != 1:
+            raise SystemExit("❌ failure weekly_delivery_miss_count should be 1")
+        if failure_payload.get("alert_sent_rate") != 1:
+            raise SystemExit("❌ failure alert_sent_rate should be 1")
+        if not str(failure_payload.get("alertChatId", "")).strip():
+            raise SystemExit("❌ failure alertChatId should be present")
+        runbook_url = str(failure_payload.get("alertRunbookUrl", "")).strip()
+        if not runbook_url or not runbook_url.startswith("http"):
+            raise SystemExit("❌ failure alertRunbookUrl should be a non-empty URL")
+        alert_message = str(failure_payload.get("alertMessage", ""))
+        if "Running Coach weekly delivery missed" not in alert_message:
+            raise SystemExit("❌ failure alertMessage should include delivery miss context")
 
 print("✅ Feedback adaptation summary and triggers are correct")
+PY
+}
+
+verify_weekly_delivery_alerting_config() {
+  echo "▶️  Verifying weekly delivery alerting config wiring"
+
+  python3 - "$WORKFLOW_FILE" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+workflow_path = Path(sys.argv[1])
+payload = json.loads(workflow_path.read_text())
+nodes = {node.get("name"): node for node in payload.get("nodes", [])}
+
+required_nodes = [
+    "Build Failure Event",
+    "Build Run Event (success)",
+    "Build Run Artifact (outputs)",
+    "Send Failure Alert",
+    "Run Events DB (success)",
+    "Run Events DB (failure)",
+    "Run Artifacts DB (outputs)",
+]
+for node_name in required_nodes:
+    if node_name not in nodes:
+        raise SystemExit(f"❌ Missing required node for alerting checks: {node_name}")
+
+failure_code = str(nodes["Build Failure Event"].get("parameters", {}).get("jsCode", ""))
+for token in ("RC_TELEGRAM_ADMIN_CHAT_ID", "RC_ALERT_RUNBOOK_URL", "RC_WEEKLY_DELIVERY_SLA_MINUTES"):
+    if token not in failure_code:
+        raise SystemExit(f"❌ Build Failure Event should reference {token}")
+
+success_code = str(nodes["Build Run Event (success)"].get("parameters", {}).get("jsCode", ""))
+if "RC_WEEKLY_DELIVERY_SLA_MINUTES" not in success_code:
+    raise SystemExit("❌ Build Run Event (success) should reference RC_WEEKLY_DELIVERY_SLA_MINUTES")
+
+artifact_code = str(nodes["Build Run Artifact (outputs)"].get("parameters", {}).get("jsCode", ""))
+for token in ("deliveryHealth", "weekly_delivery_miss_count", "alert_sent_rate", "alertRunbookUrl"):
+    if token not in artifact_code:
+        raise SystemExit(f"❌ Build Run Artifact (outputs) should include {token}")
+
+chat_id_expr = str(nodes["Send Failure Alert"].get("parameters", {}).get("chatId", "")).strip()
+if chat_id_expr != "={{ $json.alertChatId }}":
+    raise SystemExit(
+        "❌ Send Failure Alert chatId should route through Build Failure Event output "
+        f"(expected '={{ $json.alertChatId }}', got {chat_id_expr!r})"
+    )
+
+def verify_fields(node_name, expected):
+    raw = str(nodes[node_name].get("parameters", {}).get("fields", ""))
+    parts = {item.strip() for item in raw.split(",") if item.strip()}
+    missing = [field for field in expected if field not in parts]
+    if missing:
+        raise SystemExit(f"❌ {node_name} missing fields: {missing}")
+
+verify_fields("Run Events DB (success)", ["deliveryHealth", "weekly_delivery_miss_count", "alert_sent_rate"])
+verify_fields("Run Events DB (failure)", ["deliveryHealth", "weekly_delivery_miss_count", "alert_sent_rate", "alertRunbookUrl"])
+verify_fields("Run Artifacts DB (outputs)", ["deliveryHealth", "weekly_delivery_miss_count", "alert_sent_rate", "alertRunbookUrl"])
+
+print("✅ Weekly delivery alerting config wiring is correct")
 PY
 }
 
@@ -1248,6 +1386,7 @@ seed_credentials
 seed_weekly_metrics_history
 seed_feedback_events
 patch_workflow
+verify_weekly_delivery_alerting_config
 
 docker cp "$PATCHED_JSON" "$CID:/home/node/itest.workflow.json"
 
