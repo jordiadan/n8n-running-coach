@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 from jsonschema import Draft202012Validator, FormatChecker
@@ -30,6 +31,24 @@ RUN_TOKENS = [
     "continu",
 ]
 REQUIRED_DAYS = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
+CHECK_ORDER = ("schema", "guardrails", "diversity", "limits")
+CHECK_LABELS = {
+    "schema": "Schema",
+    "guardrails": "Guardrails",
+    "diversity": "Diversity",
+    "limits": "Limits",
+}
+
+
+@dataclass
+class FixtureResult:
+    name: str
+    checks: dict[str, list[str]]
+    length: int
+
+    @property
+    def passed(self) -> bool:
+        return all(not self.checks[name] for name in CHECK_ORDER)
 
 
 def load_json(path: Path) -> dict:
@@ -153,9 +172,133 @@ def limit_checks(plan: dict) -> list[str]:
     return errors
 
 
+def compact_message(message: str) -> str:
+    return " ".join(str(message).split())
+
+
+def schema_checks(validator: Draft202012Validator, plan: dict) -> list[str]:
+    errors = list(validator.iter_errors(plan))
+    return [compact_message(error.message) for error in errors]
+
+
+def collect_fixture_result(path: Path, validator: Draft202012Validator) -> FixtureResult:
+    data = load_json(path)
+    checks: dict[str, list[str]] = {name: [] for name in CHECK_ORDER}
+
+    checks["schema"] = schema_checks(validator, data)
+    if not checks["schema"]:
+        checks["guardrails"] = [compact_message(item) for item in guardrail_checks(data)]
+        checks["diversity"] = [compact_message(item) for item in diversity_checks(data)]
+        checks["limits"] = [compact_message(item) for item in limit_checks(data)]
+
+    length = len(json.dumps(data, ensure_ascii=False, separators=(",", ":")))
+    return FixtureResult(name=path.name, checks=checks, length=length)
+
+
+def render_summary(results: list[FixtureResult], report_success_rate: float) -> str:
+    total = len(results)
+    passed = sum(1 for item in results if item.passed)
+    failures = total - passed
+    lengths = [item.length for item in results if item.passed]
+
+    lines = [
+        "## Evaluation Harness",
+        f"- Fixtures checked: {total}",
+        f"- Passed: {passed}",
+        f"- Failed: {failures}",
+        f"- quality_report_generation_success_rate: {report_success_rate:.2f}",
+    ]
+    if lengths:
+        avg = sum(lengths) / len(lengths)
+        lines.append(f"- Average JSON length: {avg:.1f} chars")
+
+    failed_items = [item for item in results if not item.passed]
+    if failed_items:
+        lines.append("\n### Failures")
+        for item in failed_items:
+            diffs: list[str] = []
+            for check in CHECK_ORDER:
+                errors = item.checks[check]
+                if errors:
+                    diffs.append(f"{check}={'; '.join(errors)}")
+            lines.append(f"- {item.name}: " + " | ".join(diffs))
+
+    return "\n".join(lines) + "\n"
+
+
+def render_pr_report(results: list[FixtureResult], report_success_rate: float) -> str:
+    total = len(results)
+    passed = sum(1 for item in results if item.passed)
+    failures = total - passed
+    overall = "PASS" if failures == 0 else "FAIL"
+
+    check_totals = {name: 0 for name in CHECK_ORDER}
+    for item in results:
+        for check in CHECK_ORDER:
+            if item.checks[check]:
+                check_totals[check] += 1
+
+    lines = [
+        "# PR Quality Report",
+        "",
+        f"- Overall Result: **{overall}**",
+        f"- Fixtures Checked: **{total}**",
+        f"- Passed Fixtures: **{passed}**",
+        f"- Failed Fixtures: **{failures}**",
+        f"- quality_report_generation_success_rate: **{report_success_rate:.2f}**",
+        "",
+        "## Check Failure Summary",
+        "",
+        "| Check | Failed Fixtures |",
+        "| --- | ---: |",
+    ]
+    for check in CHECK_ORDER:
+        lines.append(f"| {CHECK_LABELS[check]} | {check_totals[check]} |")
+
+    lines.extend(
+        [
+            "",
+            "## Fixture Results",
+            "",
+            "| Fixture | Schema | Guardrails | Diversity | Limits | Result |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
+    )
+    for item in results:
+        status = {check: ("FAIL" if item.checks[check] else "PASS") for check in CHECK_ORDER}
+        result = "FAIL" if not item.passed else "PASS"
+        lines.append(
+            f"| {item.name} | {status['schema']} | {status['guardrails']} | {status['diversity']} | {status['limits']} | {result} |"
+        )
+
+    lines.extend(["", "## Main Diffs", ""])
+    failed_items = [item for item in results if not item.passed]
+    if not failed_items:
+        lines.append("- No check differences detected.")
+    else:
+        for item in failed_items:
+            lines.append(f"### {item.name}")
+            for check in CHECK_ORDER:
+                errors = item.checks[check]
+                if not errors:
+                    continue
+                lines.append(f"- {CHECK_LABELS[check]}:")
+                for error in errors[:3]:
+                    lines.append(f"  - {error}")
+
+    return "\n".join(lines) + "\n"
+
+
+def write_text(path: str, content: str) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--summary", help="Write markdown summary to this path.")
+    parser.add_argument("--pr-report", help="Write PR markdown quality report to this path.")
     args = parser.parse_args()
 
     schema = load_json(SCHEMA_PATH)
@@ -166,49 +309,19 @@ def main() -> int:
     if golden.exists():
         valid_paths.append(golden)
 
-    failures: list[str] = []
-    lengths: list[int] = []
+    results = [collect_fixture_result(path, validator) for path in valid_paths]
+    report_success_rate = 1.0 if args.pr_report else 0.0
+    summary = render_summary(results, report_success_rate)
+    pr_report = render_pr_report(results, report_success_rate)
 
-    for path in valid_paths:
-        data = load_json(path)
-        errors = list(validator.iter_errors(data))
-        if errors:
-            failures.append(f"{path.name}: schema validation failed")
-            continue
-
-        guardrail = guardrail_checks(data)
-        diversity = diversity_checks(data)
-        limits = limit_checks(data)
-        all_errors = guardrail + diversity + limits
-        if all_errors:
-            failures.append(f"{path.name}: " + "; ".join(all_errors))
-            continue
-
-        lengths.append(len(json.dumps(data, ensure_ascii=False, separators=(",", ":"))))
-
-    total = len(valid_paths)
-    passed = total - len(failures)
-
-    lines = [
-        "## Evaluation Harness",
-        f"- Fixtures checked: {total}",
-        f"- Passed: {passed}",
-        f"- Failed: {len(failures)}",
-    ]
-    if lengths:
-        avg = sum(lengths) / len(lengths)
-        lines.append(f"- Average JSON length: {avg:.1f} chars")
-
-    if failures:
-        lines.append("\n### Failures")
-        lines.extend([f"- {item}" for item in failures])
-
-    summary = "\n".join(lines) + "\n"
     print(summary)
 
     if args.summary:
-        Path(args.summary).write_text(summary)
+        write_text(args.summary, summary)
+    if args.pr_report:
+        write_text(args.pr_report, pr_report)
 
+    failures = sum(1 for item in results if not item.passed)
     return 1 if failures else 0
 
 

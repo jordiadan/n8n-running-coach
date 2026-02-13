@@ -26,7 +26,19 @@ jobs:
         run: python tests/schema_test.py
 
       - name: Evaluation harness
-        run: python tests/eval_harness.py --summary "$GITHUB_STEP_SUMMARY"
+        run: |
+          mkdir -p .artifacts
+          python tests/eval_harness.py \
+            --summary "$GITHUB_STEP_SUMMARY" \
+            --pr-report ".artifacts/pr-quality-report.md"
+
+      - name: Upload PR quality report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-quality-report
+          path: .artifacts/pr-quality-report.md
+          if-no-files-found: warn
 
       - name: Prompt version check
         run: python tests/check_prompt_version.py
