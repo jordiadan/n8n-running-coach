@@ -21,9 +21,22 @@ Fields (top-level):
 - `errorCount` (number): number of validation errors.
 - `errors` (array): validation error list.
 - `createdAt` (string): ISO timestamp.
+- `weekly_delivery_miss_count` (number): `1` when delivery missed (failure or SLA breach), else `0`.
+- `alert_sent_rate` (number): `1` when failure alert is emitted, else `0`.
+- `alertRunbookUrl` (string | null): runbook URL included in failure alerts.
 
 Nested fields:
 - `runEvent` (object): a copy of the run event payload for reference.
+- `deliveryHealth` (object):
+  - `expectedWeeklyRun` (boolean)
+  - `delivered` (boolean)
+  - `slaWindowMinutes` (number)
+  - `runDurationMs` (number)
+  - `withinSla` (boolean)
+  - `missed` (boolean)
+  - `weeklyDeliveryMissCount` (number)
+  - `alertSent` (boolean)
+  - `alertSentRate` (number)
 
 Notes:
 - The workflow uses `findOneAndUpdate` with `updateKey: runId`, so `runId` must be present.
@@ -119,6 +132,10 @@ Fields (top-level):
 - `errorCount` (number): number of validation errors.
 - `createdAt` (string): ISO timestamp for input capture.
 - `updatedAt` (string): ISO timestamp for output capture.
+- `deliveryHealth` (object): weekly delivery status snapshot copied from `run_events`.
+- `weekly_delivery_miss_count` (number): copied from `run_events`.
+- `alert_sent_rate` (number): copied from `run_events`.
+- `alertRunbookUrl` (string | null): copied from failure payload when present.
 
 Notes:
 - `runId` is the update key for upserts.

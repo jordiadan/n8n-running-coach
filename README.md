@@ -199,6 +199,9 @@ For complete rules, see:
 - For production, ensure DB config and credentials are aligned with your actual infrastructure.
 - Set `RC_TELEGRAM_PREVIEW_MODE=true` (or n8n variable) to route outgoing Telegram messages to preview mode.
 - Set `RC_TELEGRAM_PREVIEW_CHAT_ID=<chat_id>` when preview mode is enabled (required safety guard).
+- Set `RC_WEEKLY_DELIVERY_SLA_MINUTES=<minutes>` to define when a weekly run is considered late (default `120`).
+- Set `RC_TELEGRAM_ADMIN_CHAT_ID=<chat_id>` to route failure alerts to an ops/admin Telegram chat (default `730354404`).
+- Set `RC_ALERT_RUNBOOK_URL=<url>` to include your runbook URL in failure alerts (default points to `docs/ops_runbook.md`).
 
 ## Observability
 
@@ -207,6 +210,8 @@ For complete rules, see:
 - Telegram rationale telemetry is stored per run (`whyThisPlan`, `whyPlanMetricKeys`, `whyPlanHallucinationFailures`).
 - Success events also store preview routing metadata (`previewMode`, `previewChatId`).
 - Success events also persist risk-warning metadata (`riskWarningTriggerCount`, `riskWarningTriggers`, `riskWarningTriggerCounts`, `riskFeedback`).
+- Run observability now includes weekly delivery health (`deliveryHealth`, `weekly_delivery_miss_count`, `alert_sent_rate`).
+- Failure observability includes runbook metadata (`alertRunbookUrl`) used by Telegram alerts.
 - Feedback replies are persisted in `feedback_events` for compliance and recovery signals.
 - Validation failures send a Telegram alert before the workflow throws the fallback error.
 - Fly health checks call `/healthz` on the n8n instance.

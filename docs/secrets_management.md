@@ -69,6 +69,14 @@ Important:
 
 ## Audit Report
 
+### 2026-02-13 (RC-32)
+
+- Automated scan:
+  - Command: `python3 scripts/scan_secrets.py`
+  - Result: no obvious hardcoded secrets found.
+- Manual review:
+  - New ops variables (`RC_WEEKLY_DELIVERY_SLA_MINUTES`, `RC_TELEGRAM_ADMIN_CHAT_ID`, `RC_ALERT_RUNBOOK_URL`) are read from env/vars and not hardcoded as secrets in tracked files.
+
 ### 2026-02-13 (RC-31)
 
 - Automated scan:
