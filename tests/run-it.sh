@@ -687,6 +687,93 @@ print("✅ Pain-triggered risk metadata is present and time-windowed")
 PY
 }
 
+verify_feedback_quick_replies() {
+  echo "▶️  Verifying quick-feedback buttons and callback parsing"
+
+  python3 - "$EXECUTION_LOG" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+log_path = sys.argv[1]
+text = Path(log_path).read_text()
+text = re.sub(r'\x1B\[[0-9;]*[A-Za-z]', '', text)
+decoder = json.JSONDecoder()
+candidate = None
+for match in re.finditer(r'\{', text):
+    idx = match.start()
+    try:
+        obj, _ = decoder.raw_decode(text[idx:])
+    except json.JSONDecodeError:
+        continue
+    if isinstance(obj, dict) and ("data" in obj or "resultData" in obj):
+        candidate = obj
+        break
+
+if candidate is None:
+    raise SystemExit("❌ Unable to find run data in execution log")
+
+data_root = candidate.get("data", candidate)
+run_data = data_root.get("resultData", {}).get("runData", {})
+
+prompt_runs = run_data.get("Build Feedback Prompt") or []
+if not prompt_runs:
+    raise SystemExit("❌ Build Feedback Prompt output not found")
+
+prompt_payload = None
+for run in prompt_runs:
+    main = run.get("data", {}).get("main", [])
+    if main and main[0]:
+        prompt_payload = main[0][0].get("json", {})
+        break
+
+if not prompt_payload:
+    raise SystemExit("❌ Build Feedback Prompt payload is empty")
+
+keyboard = prompt_payload.get("replyMarkup", {}).get("inline_keyboard", [])
+buttons = []
+for row in keyboard:
+    for button in row:
+        if isinstance(button, dict):
+            buttons.append(button)
+
+button_texts = [str(button.get("text", "")) for button in buttons]
+expected_texts = ["✅ Done", "❌ Skipped", "😵 Hard", "🦵 Pain"]
+for expected in expected_texts:
+    if expected not in button_texts:
+        raise SystemExit(f"❌ Missing quick-feedback button: {expected}")
+
+callback_values = [str(button.get("callback_data", "")) for button in buttons]
+for response in ["done", "skipped", "hard", "pain"]:
+    if not any(value.startswith("feedback|") and value.endswith(f"|{response}") for value in callback_values):
+        raise SystemExit(f"❌ Missing callback_data for response '{response}'")
+
+parse_runs = run_data.get("Parse Feedback") or []
+if not parse_runs:
+    raise SystemExit("❌ Parse Feedback output not found")
+
+parse_payload = None
+for run in parse_runs:
+    main = run.get("data", {}).get("main", [])
+    if main and main[0]:
+        parse_payload = main[0][0].get("json", {})
+        break
+
+if not parse_payload:
+    raise SystemExit("❌ Parse Feedback payload is empty")
+
+session_key = str(parse_payload.get("sessionKey", ""))
+if not re.search(r"-12345-1$", session_key):
+    raise SystemExit(f"❌ sessionKey should include message/user ids, got: {session_key!r}")
+
+if parse_payload.get("isLateResponse") is not False:
+    raise SystemExit("❌ Expected test callback to be classified as non-late feedback")
+
+print("✅ Quick-feedback buttons and callback parsing are valid")
+PY
+}
+
 # Preconditions
 require_tool jq
 require_tool docker
@@ -797,3 +884,4 @@ verify_telegram_template
 verify_why_this_plan
 verify_preview_mode_metadata
 verify_risk_warning_metadata
+verify_feedback_quick_replies

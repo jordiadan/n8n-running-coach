@@ -834,7 +834,7 @@
         448
       ],
       "parameters": {
-        "jsCode": "const DEFAULT_CHAT_ID = '730354404';\n\nconst getVar = (key) => {\n  if (typeof $vars !== 'undefined' && $vars[key] != null) {\n    return String($vars[key]);\n  }\n  if (typeof process !== 'undefined' && process.env && process.env[key] != null) {\n    return String(process.env[key]);\n  }\n  return '';\n};\n\nconst isTruthy = (value) => ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());\n\nconst previewEnabled = isTruthy(getVar('RC_TELEGRAM_PREVIEW_MODE'));\nconst previewChatRaw = getVar('RC_TELEGRAM_PREVIEW_CHAT_ID').trim();\nif (previewEnabled && !previewChatRaw) {\n  throw new Error('RC_TELEGRAM_PREVIEW_CHAT_ID is required when RC_TELEGRAM_PREVIEW_MODE is enabled.');\n}\nconst targetChatId = previewEnabled ? previewChatRaw : DEFAULT_CHAT_ID;\n\nconst runContextItems = $items('Prompt Builder');\nconst runContext = runContextItems.length ? runContextItems[0].json : {};\nconst plan = $json.activityPlan || {};\nconst nextWeek = plan.nextWeek || {};\nconst runId = (runContext.runId || $json.runId || ($json.runEvent && $json.runEvent.runId) || $json.__runId || null);\nif (!runId) { return []; }\n\nconst weekLabel = (nextWeek.weekStart && nextWeek.weekEnd) ? `${nextWeek.weekStart} → ${nextWeek.weekEnd}` : 'this week';\nconst text = [\n  previewEnabled ? '🧪 <b>Preview mode</b>' : null,\n  `📝 <b>Quick feedback</b> (${weekLabel})`,\n  'How did your latest session feel?',\n  'Tap one option:'\n].filter(Boolean).join('\\n');\n\nconst replyMarkup = {\n  inline_keyboard: [\n    [{ text: '✅ Done', callback_data: `feedback|${runId}|done` }],\n    [{ text: '⏭️ Skipped', callback_data: `feedback|${runId}|skipped` }],\n    [{ text: '😵 Hard', callback_data: `feedback|${runId}|hard` }],\n    [{ text: '⚠️ Pain', callback_data: `feedback|${runId}|pain` }],\n  ]\n};\n\nreturn [{\n  json: {\n    chatId: targetChatId,\n    text,\n    replyMarkup,\n    runId,\n    previewMode: previewEnabled,\n    previewChatId: targetChatId,\n  }\n}];\n"
+        "jsCode": "const DEFAULT_CHAT_ID = '730354404';\n\nconst getVar = (key) => {\n  if (typeof $vars !== 'undefined' && $vars[key] != null) {\n    return String($vars[key]);\n  }\n  if (typeof process !== 'undefined' && process.env && process.env[key] != null) {\n    return String(process.env[key]);\n  }\n  return '';\n};\n\nconst isTruthy = (value) => ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());\n\nconst previewEnabled = isTruthy(getVar('RC_TELEGRAM_PREVIEW_MODE'));\nconst previewChatRaw = getVar('RC_TELEGRAM_PREVIEW_CHAT_ID').trim();\nif (previewEnabled && !previewChatRaw) {\n  throw new Error('RC_TELEGRAM_PREVIEW_CHAT_ID is required when RC_TELEGRAM_PREVIEW_MODE is enabled.');\n}\nconst targetChatId = previewEnabled ? previewChatRaw : DEFAULT_CHAT_ID;\n\nconst runContextItems = $items('Prompt Builder');\nconst runContext = runContextItems.length ? runContextItems[0].json : {};\nconst plan = $json.activityPlan || {};\nconst nextWeek = plan.nextWeek || {};\nconst runId = (runContext.runId || $json.runId || ($json.runEvent && $json.runEvent.runId) || $json.__runId || null);\nif (!runId) { return []; }\n\nconst weekLabel = (nextWeek.weekStart && nextWeek.weekEnd) ? `${nextWeek.weekStart} → ${nextWeek.weekEnd}` : 'this week';\nconst text = [\n  previewEnabled ? '🧪 <b>Preview mode</b>' : null,\n  `📝 <b>Quick feedback</b> (${weekLabel})`,\n  'How did your latest session feel?',\n  'Tap one option:'\n].filter(Boolean).join('\\n');\n\nconst replyMarkup = {\n  inline_keyboard: [\n    [{ text: '✅ Done', callback_data: `feedback|${runId}|done` }],\n    [{ text: '❌ Skipped', callback_data: `feedback|${runId}|skipped` }],\n    [{ text: '😵 Hard', callback_data: `feedback|${runId}|hard` }],\n    [{ text: '🦵 Pain', callback_data: `feedback|${runId}|pain` }],\n  ]\n};\n\nreturn [{\n  json: {\n    chatId: targetChatId,\n    text,\n    replyMarkup,\n    runId,\n    previewMode: previewEnabled,\n    previewChatId: targetChatId,\n  }\n}];\n"
       }
     },
     {
@@ -892,7 +892,7 @@
         -200
       ],
       "parameters": {
-        "jsCode": "const update = items[0].json || {};\nconst callback = update.callback_query || update.body?.callback_query || null;\nif (!callback || !callback.data) { return []; }\nconst parts = String(callback.data).split('|');\nif (parts[0] !== 'feedback' || parts.length < 3) { return []; }\nconst runId = parts[1];\nconst response = parts[2].toLowerCase();\nconst message = callback.message || {};\nconst chatId = message.chat && message.chat.id ? String(message.chat.id) : null;\nconst messageId = message.message_id || null;\nconst messageDate = message.date ? new Date(message.date * 1000) : new Date();\nconst sessionDate = messageDate.toISOString().slice(0, 10);\nconst sessionDay = messageDate.toLocaleDateString('en-US', { weekday: 'long' });\nconst sessionKey = `${runId}-${sessionDate}`;\nconst user = callback.from || {};\nreturn [{\n  json: {\n    sessionKey,\n    runId,\n    response,\n    sessionDate,\n    sessionDay,\n    chatId,\n    messageId,\n    userId: user.id || null,\n    username: user.username || null,\n    receivedAt: new Date().toISOString()\n  }\n}];\n"
+        "jsCode": "const update = items[0].json || {};\nconst callback = update.callback_query || update.body?.callback_query || null;\nif (!callback || !callback.data) { return []; }\n\nconst parts = String(callback.data).split('|');\nif (parts[0] !== 'feedback' || parts.length < 3) { return []; }\n\nconst runId = parts[1];\nconst response = parts[2].toLowerCase();\nconst allowedResponses = new Set(['done', 'skipped', 'hard', 'pain']);\nif (!allowedResponses.has(response)) { return []; }\n\nconst message = callback.message || {};\nconst chatId = message.chat && message.chat.id ? String(message.chat.id) : null;\nconst messageId = message.message_id || null;\nconst messageDate = message.date ? new Date(message.date * 1000) : new Date();\nconst now = new Date();\nconst sessionDate = messageDate.toISOString().slice(0, 10);\nconst sessionDay = messageDate.toLocaleDateString('en-US', { weekday: 'long' });\nconst promptAgeDays = Math.floor(Math.max(now.getTime() - messageDate.getTime(), 0) / 86400000);\nconst isLateResponse = promptAgeDays > 14;\n\nconst user = callback.from || {};\nconst userId = user.id || null;\nconst sessionKey = `${runId}-${messageId || sessionDate}-${userId || 'anon'}`;\n\nreturn [{\n  json: {\n    sessionKey,\n    runId,\n    response,\n    sessionDate,\n    sessionDay,\n    chatId,\n    messageId,\n    userId,\n    username: user.username || null,\n    promptSentAt: messageDate.toISOString(),\n    promptAgeDays,\n    isLateResponse,\n    receivedAt: now.toISOString()\n  }\n}];\n"
       }
     },
     {
@@ -909,7 +909,7 @@
         "operation": "findOneAndUpdate",
         "collection": "feedback_events",
         "updateKey": "sessionKey",
-        "fields": "sessionKey, runId, response, sessionDate, sessionDay, chatId, messageId, userId, username, receivedAt",
+        "fields": "sessionKey, runId, response, sessionDate, sessionDay, chatId, messageId, userId, username, promptSentAt, promptAgeDays, isLateResponse, receivedAt",
         "upsert": true,
         "options": {
           "dateFields": "receivedAt"
@@ -933,7 +933,7 @@
       ],
       "parameters": {
         "chatId": "={{ $json.chatId }}",
-        "text": "={{ `✅ Feedback saved: ${$json.response}` }}"
+        "text": "={{ $json.isLateResponse ? `⚠️ Feedback ignored: this prompt is ${$json.promptAgeDays} days old. Please answer from your latest weekly message.` : `✅ Feedback saved: ${$json.response}` }}"
       },
       "credentials": {
         "telegramApi": {
@@ -978,6 +978,26 @@
       ],
       "id": "799a0656-9818-4e74-9046-5c70b2898757",
       "name": "Summarize Pain Feedback"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.isLateResponse }}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        220,
+        -320
+      ],
+      "id": "f0b90789-89af-4b90-a1a5-df6507a43f63",
+      "name": "Is Feedback Late?"
     }
   ],
   "pinData": {},
@@ -1471,7 +1491,7 @@
       "main": [
         [
           {
-            "node": "Feedback Events DB",
+            "node": "Is Feedback Late?",
             "type": "main",
             "index": 0
           }
@@ -1505,6 +1525,24 @@
         [
           {
             "node": "Build Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Feedback Late?": {
+      "main": [
+        [
+          {
+            "node": "Feedback Events DB",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Feedback Ack",
             "type": "main",
             "index": 0
           }
