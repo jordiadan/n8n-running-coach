@@ -367,7 +367,10 @@
         },
         "simplify": false,
         "jsonOutput": true,
-        "options": {}
+        "options": {
+          "temperature": 0.35,
+          "maxTokens": 800
+        }
       },
       "type": "@n8n/n8n-nodes-langchain.openAi",
       "typeVersion": 1.8,
