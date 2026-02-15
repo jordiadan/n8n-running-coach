@@ -506,6 +506,9 @@ if not payload:
     raise SystemExit("❌ Build Telegram Message payload is empty")
 
 html = payload.get("htmlMessage") or ""
+max_telegram_length = 3900
+if len(html) > max_telegram_length:
+    raise SystemExit(f"❌ htmlMessage exceeds Telegram safe budget ({len(html)} > {max_telegram_length})")
 required_sections = [
     "<b>Last-week summary</b>",
     "<b>Weekly adherence</b>",
@@ -521,6 +524,13 @@ if missing:
 template_version = payload.get("telegramTemplateVersion")
 if template_version != "telegram-v2.1":
     raise SystemExit(f"❌ Unexpected telegramTemplateVersion: {template_version!r}")
+
+if payload.get("telegramMessageBudget") != 3900:
+    raise SystemExit(f"❌ telegramMessageBudget should be 3900, got {payload.get('telegramMessageBudget')!r}")
+if payload.get("telegramMessageLength") != len(html):
+    raise SystemExit(
+        f"❌ telegramMessageLength mismatch: payload={payload.get('telegramMessageLength')!r}, actual={len(html)}"
+    )
 
 completeness = payload.get("sectionCompleteness")
 required_keys = {"lastWeekSummary", "weeklyAdherence", "thisWeekGoal", "dailyPlan", "keySession", "warnings"}
