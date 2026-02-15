@@ -1432,6 +1432,16 @@
       "main": [
         [
           {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build Feedback Prompt",
+            "type": "main",
+            "index": 0
+          },
+          {
             "node": "Run Events DB (success)",
             "type": "main",
             "index": 0
@@ -1626,22 +1636,6 @@
           },
           {
             "node": "Read Recent Pain Feedback",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Run Events DB (success)": {
-      "main": [
-        [
-          {
-            "node": "Send a text message",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Build Feedback Prompt",
             "type": "main",
             "index": 0
           }
