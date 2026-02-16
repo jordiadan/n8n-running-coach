@@ -734,7 +734,7 @@ if risk_feedback.get("painEventCount") != 1:
     raise SystemExit(f"❌ Expected only recent pain event count = 1, got {risk_feedback.get('painEventCount')!r}")
 
 html = str(payload.get("htmlMessage") or "")
-if "Pain feedback reported" not in html:
+if ("Pain feedback reported" not in html) and ("Dolor reportado" not in html):
     raise SystemExit("❌ Pain warning text missing in htmlMessage")
 
 print("✅ Pain-triggered risk metadata is present and time-windowed")
