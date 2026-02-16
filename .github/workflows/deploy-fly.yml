@@ -79,192 +79,203 @@ jobs:
         run: |
           flyctl deploy --app "$APP" --config "fly.toml" --remote-only
 
-      - name: Update workflow via n8n API
+      - name: Update workflows via n8n API
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
         run: |
           set -euo pipefail
-          api_url="https://${APP}.fly.dev/api/v1/workflows/Q9nTNHZ5vUBf58oI"
-          echo "Updating workflow via API (app: $APP)"
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
+          base_api="https://${APP}.fly.dev/api/v1/workflows"
 
-          src = Path("workflows/running_coach_workflow.json")
-          dst = Path("/tmp/n8n_workflow_update.json")
+          sanitize_workflow() {
+            local src=$1
+            local dst=$2
+            python3 - "$src" "$dst" <<'PY'
+import json
+import sys
+from pathlib import Path
 
-          allowed = {
-              "name",
-              "nodes",
-              "connections",
-              "settings",
+src = Path(sys.argv[1])
+dst = Path(sys.argv[2])
+allowed = {"name", "nodes", "connections", "settings", "active"}
+data = json.loads(src.read_text())
+sanitized = {k: data[k] for k in allowed if k in data}
+dst.write_text(json.dumps(sanitized))
+PY
           }
 
-          data = json.loads(src.read_text())
-          sanitized = {k: data[k] for k in allowed if k in data}
-          dst.write_text(json.dumps(sanitized))
-          PY
-          for attempt in {1..10}; do
-            status=$(curl -s -o /tmp/n8n_update_response.json -w "%{http_code}" \
-              -X PUT \
-              -H "X-N8N-API-KEY: $N8N_API_KEY" \
-              -H "Content-Type: application/json" \
-              --data-binary @/tmp/n8n_workflow_update.json \
-              "$api_url" || true)
-            if [ "$status" = "200" ]; then
-              echo "✅ Workflow update succeeded"
-              break
+          verify_workflow() {
+            local local_path=$1
+            local remote_path=$2
+            local label=$3
+            python3 - "$local_path" "$remote_path" "$label" <<'PY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+local_path = Path(sys.argv[1])
+remote_path = Path(sys.argv[2])
+label = sys.argv[3]
+allowed = {"name", "nodes", "connections", "settings", "active"}
+drop_keys = {"webhookId"}
+
+def scrub(obj):
+    if isinstance(obj, dict):
+        cleaned = {}
+        for k, v in obj.items():
+            if k in drop_keys:
+                continue
+            if k == "credentials" and isinstance(v, dict):
+                cleaned[k] = {name: {} for name in v.keys()}
+                continue
+            cleaned[k] = scrub(v)
+        return cleaned
+    if isinstance(obj, list):
+        return [scrub(v) for v in obj]
+    return obj
+
+def normalize_nodes(nodes):
+    normalized = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        node = scrub(node)
+        node.pop("id", None)
+        normalized.append(node)
+    normalized.sort(key=lambda item: item.get("name", ""))
+    return normalized
+
+def normalize_connections(connections):
+    if not isinstance(connections, dict):
+        return connections
+    normalized = {}
+    for source, types in connections.items():
+        if not isinstance(types, dict):
+            normalized[source] = types
+            continue
+        normalized_types = {}
+        for conn_type, groups in types.items():
+            if not isinstance(groups, list):
+                normalized_types[conn_type] = groups
+                continue
+            normalized_groups = []
+            for group in groups:
+                if isinstance(group, list):
+                    sorted_group = sorted(
+                        (scrub(item) for item in group if isinstance(item, dict)),
+                        key=lambda item: (item.get("node", ""), item.get("type", ""), item.get("index", 0)),
+                    )
+                    normalized_groups.append(sorted_group)
+                else:
+                    normalized_groups.append(group)
+            normalized_types[conn_type] = normalized_groups
+        normalized[source] = normalized_types
+    return normalized
+
+def canonical(obj):
+    return json.dumps(obj, sort_keys=True, separators=(",", ":")).encode()
+
+local = scrub(json.loads(local_path.read_text()))
+remote_raw = json.loads(remote_path.read_text())
+remote = scrub({k: remote_raw[k] for k in allowed if k in remote_raw})
+
+local["nodes"] = normalize_nodes(local.get("nodes", []))
+remote["nodes"] = normalize_nodes(remote.get("nodes", []))
+local["connections"] = normalize_connections(local.get("connections", {}))
+remote["connections"] = normalize_connections(remote.get("connections", {}))
+
+local_settings = local.get("settings", {})
+remote_settings = remote.get("settings", {})
+if isinstance(local_settings, dict) and isinstance(remote_settings, dict):
+    remote["settings"] = {k: remote_settings.get(k) for k in local_settings.keys()}
+    local["settings"] = local_settings
+
+if hashlib.sha256(canonical(local)).hexdigest() != hashlib.sha256(canonical(remote)).hexdigest():
+    print(f"❌ Workflow verification failed for {label}")
+    raise SystemExit(1)
+
+print(f"✅ Workflow verification succeeded for {label}")
+PY
+          }
+
+          update_or_create_workflow() {
+            local src=$1
+            local workflow_id=$2
+            local allow_create=$3
+            local label=$4
+            local payload="/tmp/${label}.update.json"
+            local remote="/tmp/${label}.remote.json"
+            local response="/tmp/${label}.response.json"
+            local api_url="${base_api}/${workflow_id}"
+            local status=""
+
+            sanitize_workflow "$src" "$payload"
+            echo "Updating ${label} (${workflow_id})"
+
+            for attempt in {1..10}; do
+              status=$(curl -s -o "$response" -w "%{http_code}" \
+                -X PUT \
+                -H "X-N8N-API-KEY: $N8N_API_KEY" \
+                -H "Content-Type: application/json" \
+                --data-binary @"$payload" \
+                "$api_url" || true)
+              if [ "$status" = "200" ]; then
+                break
+              fi
+              if [ "$status" = "404" ] && [ "$allow_create" = "1" ]; then
+                break
+              fi
+              echo "⏳ ${label} update attempt $attempt failed (status: $status); retrying in 6s..."
+              sleep 6
+            done
+
+            if [ "$status" = "404" ] && [ "$allow_create" = "1" ]; then
+              echo "ℹ️  ${label} not found; creating via POST"
+              status=$(curl -s -o "$response" -w "%{http_code}" \
+                -X POST \
+                -H "X-N8N-API-KEY: $N8N_API_KEY" \
+                -H "Content-Type: application/json" \
+                --data-binary @"$payload" \
+                "$base_api" || true)
+              if [ "$status" != "200" ] && [ "$status" != "201" ]; then
+                echo "❌ ${label} create failed (status: $status)"
+                cat "$response" || true
+                exit 1
+              fi
+              workflow_id="$(python3 - "$response" "$workflow_id" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text() or "{}")
+print(payload.get("id") or sys.argv[2])
+PY
+)"
+              api_url="${base_api}/${workflow_id}"
+              echo "✅ ${label} created (id: ${workflow_id})"
+            elif [ "$status" != "200" ]; then
+              echo "❌ ${label} update failed (status: $status)"
+              cat "$response" || true
+              exit 1
+            else
+              echo "✅ ${label} updated"
             fi
-            echo "⏳ Update attempt $attempt failed (status: $status); retrying in 6s..."
-            sleep 6
-          done
-          if [ "${status:-}" != "200" ]; then
-            echo "❌ Workflow update failed after retries"
-            cat /tmp/n8n_update_response.json || true
-            exit 1
-          fi
-          echo "Verifying workflow payload matches repo"
-          curl -s -o /tmp/n8n_workflow_remote.json \
-            -H "X-N8N-API-KEY: $N8N_API_KEY" \
-            "$api_url"
-          python3 - <<'PY'
-          import hashlib
-          import json
-          from pathlib import Path
 
-          allowed = {"name", "nodes", "connections", "settings"}
-          drop_keys = {"webhookId"}
+            curl -s -o "$remote" \
+              -H "X-N8N-API-KEY: $N8N_API_KEY" \
+              "$api_url"
+            verify_workflow "$payload" "$remote" "$label"
+          }
 
-          def normalize_nodes(nodes):
-              normalized = []
-              for node in nodes:
-                  if not isinstance(node, dict):
-                      continue
-                  node = scrub(node)
-                  node.pop("id", None)
-                  normalized.append(node)
-              normalized.sort(key=lambda item: item.get("name", ""))
-              return normalized
+          update_or_create_workflow \
+            "workflows/running_coach_workflow.json" \
+            "Q9nTNHZ5vUBf58oI" \
+            "0" \
+            "running_coach_main"
 
-          def normalize_connections(connections):
-              if not isinstance(connections, dict):
-                  return connections
-              normalized = {}
-              for source, types in connections.items():
-                  if not isinstance(types, dict):
-                      normalized[source] = types
-                      continue
-                  normalized_types = {}
-                  for conn_type, groups in types.items():
-                      if not isinstance(groups, list):
-                          normalized_types[conn_type] = groups
-                          continue
-                      normalized_groups = []
-                      for group in groups:
-                          if isinstance(group, list):
-                              sorted_group = sorted(
-                                  (scrub(item) for item in group if isinstance(item, dict)),
-                                  key=lambda item: (
-                                      item.get("node", ""),
-                                      item.get("type", ""),
-                                      item.get("index", 0),
-                                  ),
-                              )
-                              normalized_groups.append(sorted_group)
-                          else:
-                              normalized_groups.append(group)
-                      normalized_types[conn_type] = normalized_groups
-                  normalized[source] = normalized_types
-              return normalized
-
-          def scrub(obj):
-              if isinstance(obj, dict):
-                  cleaned = {}
-                  for k, v in obj.items():
-                      if k in drop_keys:
-                          continue
-                      if k == "credentials" and isinstance(v, dict):
-                          cleaned[k] = {name: {} for name in v.keys()}
-                          continue
-                      cleaned[k] = scrub(v)
-                  return cleaned
-              if isinstance(obj, list):
-                  return [scrub(v) for v in obj]
-              return obj
-
-          def canonical(obj):
-              return json.dumps(obj, sort_keys=True, separators=(",", ":")).encode()
-
-          local_path = Path("/tmp/n8n_workflow_update.json")
-          remote_path = Path("/tmp/n8n_workflow_remote.json")
-
-          local = scrub(json.loads(local_path.read_text()))
-          remote_raw = json.loads(remote_path.read_text())
-          remote = scrub({k: remote_raw[k] for k in allowed if k in remote_raw})
-
-          local["nodes"] = normalize_nodes(local.get("nodes", []))
-          remote["nodes"] = normalize_nodes(remote.get("nodes", []))
-          local["connections"] = normalize_connections(local.get("connections", {}))
-          remote["connections"] = normalize_connections(remote.get("connections", {}))
-          local_settings = local.get("settings", {})
-          remote_settings = remote.get("settings", {})
-          if isinstance(local_settings, dict) and isinstance(remote_settings, dict):
-              remote["settings"] = {k: remote_settings.get(k) for k in local_settings.keys()}
-              local["settings"] = local_settings
-
-          local_hash = hashlib.sha256(canonical(local)).hexdigest()
-          remote_hash = hashlib.sha256(canonical(remote)).hexdigest()
-
-          if local_hash != remote_hash:
-              def node_map(nodes):
-                  mapped = {}
-                  for node in nodes:
-                      if isinstance(node, dict):
-                          name = node.get("name")
-                          if name:
-                              mapped[name] = node
-                  return mapped
-
-              def node_hashes(nodes):
-                  hashes = {}
-                  for name, node in node_map(nodes).items():
-                      hashes[name] = hashlib.sha256(canonical(node)).hexdigest()
-                  return hashes
-
-              local_nodes = local.get("nodes", [])
-              remote_nodes = remote.get("nodes", [])
-              local_node_hashes = node_hashes(local_nodes)
-              remote_node_hashes = node_hashes(remote_nodes)
-
-              settings_hash = hashlib.sha256(canonical(local.get("settings", {}))).hexdigest()
-              remote_settings_hash = hashlib.sha256(canonical(remote.get("settings", {}))).hexdigest()
-              connections_hash = hashlib.sha256(canonical(local.get("connections", {}))).hexdigest()
-              remote_connections_hash = hashlib.sha256(canonical(remote.get("connections", {}))).hexdigest()
-
-              print("❌ Workflow verification failed")
-              print(f"local_hash={local_hash}")
-              print(f"remote_hash={remote_hash}")
-              print(f"local_nodes_hash={hashlib.sha256(canonical(local_nodes)).hexdigest()}")
-              print(f"remote_nodes_hash={hashlib.sha256(canonical(remote_nodes)).hexdigest()}")
-              print(f"local_connections_hash={connections_hash}")
-              print(f"remote_connections_hash={remote_connections_hash}")
-              print(f"local_settings_hash={settings_hash}")
-              print(f"remote_settings_hash={remote_settings_hash}")
-
-              mismatched = []
-              for name in sorted(set(local_node_hashes) | set(remote_node_hashes)):
-                  if local_node_hashes.get(name) != remote_node_hashes.get(name):
-                      mismatched.append(name)
-              if mismatched:
-                  print("Mismatched nodes (up to 10):")
-                  for name in mismatched[:10]:
-                      local_node = node_map(local_nodes).get(name, {})
-                      remote_node = node_map(remote_nodes).get(name, {})
-                      local_keys = sorted(local_node.keys())
-                      remote_keys = sorted(remote_node.keys())
-                      print(f"- {name}: local_keys={local_keys} remote_keys={remote_keys}")
-              raise SystemExit(1)
-
-          print("✅ Workflow verification succeeded")
-          PY
+          update_or_create_workflow \
+            "workflows/running_coach_feedback_workflow.json" \
+            "running-coach-feedback-ingestion" \
+            "1" \
+            "running_coach_feedback"

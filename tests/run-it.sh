@@ -4,6 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TMP_DIR="$REPO_ROOT/.tmp"
+N8N_DATA_DIR="${N8N_DATA_DIR:-$TMP_DIR/n8n}"
+export N8N_DATA_DIR
 
 COMPOSE_FILE="$REPO_ROOT/docker-compose.itest.yml"
 MOCKS_FILE="$REPO_ROOT/tests/mockserver-expectations.json"
@@ -167,25 +169,9 @@ PY
   echo "✅ weekly_metrics history seeded"
 }
 
-seed_feedback_events() {
-  echo "▶️  Seeding feedback_events history"
-  local mid now_iso recent_date stale_iso stale_date
-  mid=$("${COMPOSE_CMD[@]}" ps -q mongo)
-  [[ -n "$mid" ]] || { echo "❌ Unable to resolve mongo container id"; exit 1; }
-
-  now_iso="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-  recent_date="${now_iso%%T*}"
-  stale_iso="$(date -u -v-45d +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -d '45 days ago' +"%Y-%m-%dT%H:%M:%SZ")"
-  stale_date="${stale_iso%%T*}"
-
-  docker exec "$mid" mongosh --quiet "mongodb://localhost:27017/running_coach_itest" \
-    --eval "db.feedback_events.deleteMany({}); db.feedback_events.insertMany([{sessionKey:'itest-pain-recent-${recent_date}',sessionRef:'itest-prior-run-recent-111',runId:'itest-prior-run-recent',type:'pain',response:'pain',note:null,sessionDate:'${recent_date}',date:'${recent_date}',sessionDay:'Monday',day:'Monday',chatId:'730354404',messageId:111,userId:1,username:'itest',timestamp:'${now_iso}',receivedAt:'${now_iso}'},{sessionKey:'itest-skipped-recent-a-${recent_date}',sessionRef:'itest-prior-run-recent-113',runId:'itest-prior-run-recent',type:'skipped',response:'skipped',note:null,sessionDate:'${recent_date}',date:'${recent_date}',sessionDay:'Tuesday',day:'Tuesday',chatId:'730354404',messageId:113,userId:1,username:'itest',timestamp:'${now_iso}',receivedAt:'${now_iso}'},{sessionKey:'itest-skipped-recent-b-${recent_date}',sessionRef:'itest-prior-run-recent-114',runId:'itest-prior-run-recent',type:'skipped',response:'skipped',note:null,sessionDate:'${recent_date}',date:'${recent_date}',sessionDay:'Wednesday',day:'Wednesday',chatId:'730354404',messageId:114,userId:1,username:'itest',timestamp:'${now_iso}',receivedAt:'${now_iso}'},{sessionKey:'itest-foreign-pain-${recent_date}',sessionRef:'itest-foreign-run-211',runId:'itest-foreign-run',type:'pain',response:'pain',note:null,sessionDate:'${recent_date}',date:'${recent_date}',sessionDay:'Monday',day:'Monday',chatId:'999000111',messageId:211,userId:2,username:'other',timestamp:'${now_iso}',receivedAt:'${now_iso}'},{sessionKey:'itest-foreign-skipped-${recent_date}',sessionRef:'itest-foreign-run-212',runId:'itest-foreign-run',type:'skipped',response:'skipped',note:null,sessionDate:'${recent_date}',date:'${recent_date}',sessionDay:'Tuesday',day:'Tuesday',chatId:'999000111',messageId:212,userId:2,username:'other',timestamp:'${now_iso}',receivedAt:'${now_iso}'},{sessionKey:'itest-pain-stale-${stale_date}',sessionRef:'itest-prior-run-stale-112',runId:'itest-prior-run-stale',type:'pain',response:'pain',note:null,sessionDate:'${stale_date}',date:'${stale_date}',sessionDay:'Monday',day:'Monday',chatId:'730354404',messageId:112,userId:1,username:'itest',timestamp:'${stale_iso}',receivedAt:'${stale_iso}'}]);" >/dev/null
-  echo "✅ feedback_events history seeded"
-}
-
 patch_workflow() {
   echo "▶️  Patching workflow JSON"
-  local js_mock_llm js_mock_repair_1 js_mock_repair_2 js_mock_telegram js_mock_feedback_trigger
+  local js_mock_llm js_mock_repair_1 js_mock_repair_2 js_mock_telegram
 
   js_mock_llm=$'return [{\n  json: {\n    activityPlan: {\n      nextWeek: {\n        phase: "Desarrollo",\n        objective: "Consolidar base aerobica",\n        weekStart: "2025-10-13",\n        weekEnd: "2025-10-19"\n      },\n      days: [\n        { day: "Lunes", date: "2025-10-13", activity: "Easy run", distance_time: "40 min", intensity: "Hard", goal: "Recuperacion", note: "Movilidad + foam roller" },\n        { day: "Martes", date: "2025-10-14", activity: "Gimnasio", distance_time: "60 min", intensity: "-", goal: "Fuerza (Pecho y brazos)" },\n        { day: "Miercoles", date: "2025-10-15", activity: "VO2 max", distance_time: "4x3 min", intensity: "Z4-Z5 (168-188 bpm)", goal: "Potencia aerobica" },\n        { day: "Jueves", date: "2025-10-16", activity: "Gimnasio", distance_time: "60 min", intensity: "-", goal: "Fuerza (Espalda y hombros)" },\n        { day: "Viernes", date: "2025-10-17", activity: "Tempo / Umbral", distance_time: "30 min", intensity: "Z3-Z4 (155-174 bpm)", goal: "Tolerancia lactato" },\n        { day: "Sabado", date: "2025-10-18", activity: "Gimnasio", distance_time: "60 min", intensity: "-", goal: "Fuerza (Piernas)" },\n        { day: "Domingo", date: "2025-10-19", activity: "Long run", distance_time: "75 min", intensity: "Z2 (118-138 bpm)", goal: "Base aerobica progresiva", note: "Ultimos 10 min a Z3" }\n      ]\n    },\n    justification: [\n      "Carga coherente con ATL y HRV recientes",\n      "VO2 y tempo separados por >=48h",\n      "Long run progresivo para consolidar CTL"\n    ]\n  }\n}];'
 
@@ -198,9 +184,7 @@ patch_workflow() {
 
   js_mock_telegram=$'return [{\n  json: {\n    ok: true,\n    result: {\n      message_id: 12345,\n      chat: { id: 987654, username: "itest" },\n      date: Math.floor(Date.now() / 1000),\n      text: "Test Telegram message"\n    }\n  }\n}];'
 
-  js_mock_feedback_trigger=$'const runId = items[0].json.runId || "itest-run";\nreturn [{\n  json: {\n    callback_query: {\n      data: `feedback|${runId}|done`,\n      from: { id: 1, username: "itest" },\n      message: {\n        message_id: 12345,\n        chat: { id: 987654, username: "itest" },\n        date: Math.floor(Date.now() / 1000)\n      }\n    }\n  }\n}];'
-
-  jq --arg js_llm "$js_mock_llm" --arg js_repair_1 "$js_mock_repair_1" --arg js_repair_2 "$js_mock_repair_2" --arg js_telegram "$js_mock_telegram" --arg js_feedback "$js_mock_feedback_trigger" --arg mockUrl "http://mock:1080" '
+  jq --arg js_llm "$js_mock_llm" --arg js_repair_1 "$js_mock_repair_1" --arg js_repair_2 "$js_mock_repair_2" --arg js_telegram "$js_mock_telegram" --arg mockUrl "http://mock:1080" '
     .nodes |= map(
       if .name == "GET Activities" then
         .parameters.url = $mockUrl + "/api/v1/athlete/i372001/activities"
@@ -210,11 +194,6 @@ patch_workflow() {
         .parameters.url = $mockUrl + "/api/v1/athlete/i372001/wellness"
         | .parameters.sendHeaders = false
         | .parameters.headerParameters.parameters = []
-      elif .name == "Telegram Feedback Trigger" then
-        .type = "n8n-nodes-base.code"
-        | .typeVersion = 2
-        | .parameters = {jsCode: $js_feedback}
-        | del(.credentials)
       elif .name == "Message a model" then
         .type = "n8n-nodes-base.code"
         | .typeVersion = 2
@@ -231,11 +210,6 @@ patch_workflow() {
         | .parameters = {jsCode: $js_repair_2}
         | del(.credentials)
       elif .name == "Send a text message" then
-        .type = "n8n-nodes-base.code"
-        | .typeVersion = 2
-        | .parameters = {jsCode: $js_telegram}
-        | del(.credentials)
-      elif .name == "Send Feedback Ack" then
         .type = "n8n-nodes-base.code"
         | .typeVersion = 2
         | .parameters = {jsCode: $js_telegram}
@@ -259,9 +233,6 @@ patch_workflow() {
       ]
     | .connections["Build Run Event (success)"].main[0] += [
         { "node": "Build Reminder Context", "type": "main", "index": 0 }
-      ]
-    | .connections["Build Telegram Message"].main[0] += [
-        { "node": "Telegram Feedback Trigger", "type": "main", "index": 0 }
       ]
   ' "$WORKFLOW_FILE" > "$PATCHED_JSON"
 }
@@ -499,7 +470,6 @@ if len(html) > max_telegram_length:
     raise SystemExit(f"❌ htmlMessage exceeds Telegram safe budget ({len(html)} > {max_telegram_length})")
 required_sections = [
     "<b>Last-week summary</b>",
-    "<b>Weekly adherence</b>",
     "<b>This-week goal</b>",
     "<b>Daily plan</b>",
     "<b>Key session</b>",
@@ -521,7 +491,7 @@ if payload.get("telegramMessageLength") != len(html):
     )
 
 completeness = payload.get("sectionCompleteness")
-required_keys = {"lastWeekSummary", "weeklyAdherence", "thisWeekGoal", "dailyPlan", "keySession", "warnings"}
+required_keys = {"lastWeekSummary", "thisWeekGoal", "dailyPlan", "keySession", "warnings"}
 if not isinstance(completeness, dict):
     raise SystemExit("❌ sectionCompleteness is missing or invalid")
 missing_keys = sorted(required_keys - set(completeness.keys()))
@@ -531,16 +501,6 @@ if missing_keys:
 missing_count = payload.get("sectionMissingCount")
 if not isinstance(missing_count, int):
     raise SystemExit("❌ sectionMissingCount is missing or invalid")
-
-weekly = payload.get("weeklyAdherenceSummary")
-if not isinstance(weekly, dict):
-    raise SystemExit("❌ weeklyAdherenceSummary is missing or invalid")
-counts = weekly.get("counts")
-if not isinstance(counts, dict):
-    raise SystemExit("❌ weeklyAdherenceSummary.counts is missing or invalid")
-for key in ("done", "skipped", "hard", "pain"):
-    if key not in counts:
-        raise SystemExit(f"❌ weeklyAdherenceSummary.counts missing key: {key}")
 
 print("✅ Telegram template includes all fixed sections and observability fields")
 PY
@@ -668,7 +628,7 @@ PY
 }
 
 verify_risk_warning_metadata() {
-  echo "▶️  Verifying pain-triggered risk warning metadata"
+  echo "▶️  Verifying risk warning metadata"
 
   python3 - "$EXECUTION_LOG" <<'PY'
 import json
@@ -713,31 +673,22 @@ if not payload:
 counts = payload.get("riskWarningTriggerCounts")
 if not isinstance(counts, dict):
     raise SystemExit("❌ riskWarningTriggerCounts missing")
-if counts.get("painReported") != 1:
-    raise SystemExit(f"❌ Expected painReported trigger count = 1, got {counts.get('painReported')!r}")
 
 triggers = payload.get("riskWarningTriggers")
-if not isinstance(triggers, list) or "painReported" not in triggers:
-    raise SystemExit("❌ painReported missing from riskWarningTriggers")
+if not isinstance(triggers, list):
+    raise SystemExit("❌ riskWarningTriggers missing")
 
-risk_feedback = payload.get("riskFeedback")
-if not isinstance(risk_feedback, dict):
-    raise SystemExit("❌ riskFeedback missing")
-if str(risk_feedback.get("chatId")) != "730354404":
-    raise SystemExit(f"❌ riskFeedback should be scoped to default athlete chat, got {risk_feedback.get('chatId')!r}")
-if risk_feedback.get("painEventCount") != 1:
-    raise SystemExit(f"❌ Expected only recent pain event count = 1, got {risk_feedback.get('painEventCount')!r}")
+if counts.get("painReported", 0) not in (0, None):
+    raise SystemExit(f"❌ painReported should be 0 without generic feedback ingestion, got {counts.get('painReported')!r}")
+if payload.get("riskFeedback") is not None:
+    raise SystemExit("❌ riskFeedback should be absent after removing generic feedback ingestion")
 
-html = str(payload.get("htmlMessage") or "")
-if ("Pain feedback reported" not in html) and ("Dolor reportado" not in html):
-    raise SystemExit("❌ Pain warning text missing in htmlMessage")
-
-print("✅ Pain-triggered risk metadata is present and time-windowed")
+print("✅ Risk warning metadata is present without generic-feedback dependency")
 PY
 }
 
-verify_feedback_adaptation_metadata() {
-  echo "▶️  Verifying feedback adaptation summary and triggers"
+verify_run_event_observability() {
+  echo "▶️  Verifying run-event observability metadata"
 
   python3 - "$EXECUTION_LOG" <<'PY'
 import json
@@ -780,49 +731,14 @@ for run in prompt_runs:
 if not prompt_payload:
     raise SystemExit("❌ Prompt Builder payload is empty")
 
-feedback = prompt_payload.get("feedbackSummary")
-if not isinstance(feedback, dict):
-    raise SystemExit("❌ feedbackSummary missing from Prompt Builder output")
-
 activities = prompt_payload.get("activities")
 wellness = prompt_payload.get("wellness")
 if not isinstance(activities, list) or len(activities) == 0:
     raise SystemExit("❌ Prompt Builder should receive non-empty activities context")
 if not isinstance(wellness, list) or len(wellness) == 0:
     raise SystemExit("❌ Prompt Builder should receive non-empty wellness context")
-
-counts = feedback.get("counts")
-if not isinstance(counts, dict):
-    raise SystemExit("❌ feedbackSummary.counts missing")
-if str(feedback.get("chatId")) != "730354404":
-    raise SystemExit(f"❌ feedbackSummary.chatId should be scoped to default athlete chat, got {feedback.get('chatId')!r}")
-if counts.get("pain") != 1:
-    raise SystemExit(f"❌ Expected recent pain count = 1, got {counts.get('pain')!r}")
-if counts.get("skipped") != 2:
-    raise SystemExit(f"❌ Expected skipped count = 2 for scoped low adherence scenario, got {counts.get('skipped')!r}")
-
-if feedback.get("hasRecentPain") is not True:
-    raise SystemExit("❌ hasRecentPain should be true")
-if feedback.get("hasLowAdherence") is not True:
-    raise SystemExit("❌ hasLowAdherence should be true when skipped sessions are high")
-
-adherence_rate = feedback.get("adherenceRate")
-skip_rate = feedback.get("skipRate")
-if adherence_rate is None or adherence_rate >= 0.6:
-    raise SystemExit(f"❌ adherenceRate should indicate low adherence, got {adherence_rate!r}")
-if skip_rate is None or skip_rate <= 0.4:
-    raise SystemExit(f"❌ skipRate should indicate low adherence, got {skip_rate!r}")
-
-triggers = feedback.get("adaptationTriggers")
-if not isinstance(triggers, list):
-    raise SystemExit("❌ adaptationTriggers missing")
-expected_triggers = {"painReported", "lowAdherence"}
-if not expected_triggers.issubset(set(triggers)):
-    raise SystemExit(f"❌ adaptationTriggers missing expected values, got {triggers!r}")
-
-reasons = feedback.get("adaptationReasons")
-if not isinstance(reasons, list) or len(reasons) < 2:
-    raise SystemExit("❌ adaptationReasons should include both pain and adherence rationale")
+if prompt_payload.get("feedbackSummary") is not None:
+    raise SystemExit("❌ feedbackSummary should not be present in Prompt Builder output")
 
 event_runs = run_data.get("Build Run Event (success)") or []
 if not event_runs:
@@ -838,20 +754,9 @@ for run in event_runs:
 if not event_payload:
     raise SystemExit("❌ Build Run Event payload is empty")
 
-if event_payload.get("feedbackAdaptationApplied") is not True:
-    raise SystemExit("❌ feedbackAdaptationApplied should be true")
-
-trigger_count = event_payload.get("adaptationTriggerCount")
-if not isinstance(trigger_count, int) or trigger_count < 2:
-    raise SystemExit(f"❌ adaptationTriggerCount should be >= 2, got {trigger_count!r}")
-
-event_triggers = event_payload.get("adaptationTriggers")
-if not isinstance(event_triggers, list) or not expected_triggers.issubset(set(event_triggers)):
-    raise SystemExit(f"❌ run event adaptationTriggers missing expected values, got {event_triggers!r}")
-
-event_feedback = event_payload.get("feedbackSummary")
-if not isinstance(event_feedback, dict) or event_feedback.get("hasLowAdherence") is not True:
-    raise SystemExit("❌ run event should persist feedbackSummary with hasLowAdherence=true")
+for removed_field in ("feedbackSummary", "feedbackAdaptationApplied", "adaptationTriggers", "adaptationTriggerCount"):
+    if event_payload.get(removed_field) is not None:
+        raise SystemExit(f"❌ {removed_field} should be absent after removing generic feedback adaptation")
 
 structured_logs = event_payload.get("structuredLogs")
 if not isinstance(structured_logs, list) or len(structured_logs) < 2:
@@ -1010,197 +915,7 @@ if failure_runs:
         if not isinstance(failure_core_metrics.get("invalidJsonRate"), (int, float)):
             raise SystemExit("❌ failure coreMetrics.invalidJsonRate should be numeric")
 
-print("✅ Feedback adaptation summary and triggers are correct")
-PY
-}
-
-verify_feedback_quick_replies() {
-  echo "▶️  Verifying no immediate feedback prompt and callback parsing"
-
-  python3 - "$EXECUTION_LOG" <<'PY'
-import json
-import re
-import sys
-from pathlib import Path
-
-log_path = sys.argv[1]
-text = Path(log_path).read_text()
-text = re.sub(r'\x1B\[[0-9;]*[A-Za-z]', '', text)
-decoder = json.JSONDecoder()
-candidate = None
-for match in re.finditer(r'\{', text):
-    idx = match.start()
-    try:
-        obj, _ = decoder.raw_decode(text[idx:])
-    except json.JSONDecodeError:
-        continue
-    if isinstance(obj, dict) and ("data" in obj or "resultData" in obj):
-        candidate = obj
-        break
-
-if candidate is None:
-    raise SystemExit("❌ Unable to find run data in execution log")
-
-data_root = candidate.get("data", candidate)
-run_data = data_root.get("resultData", {}).get("runData", {})
-
-if run_data.get("Build Feedback Prompt"):
-    raise SystemExit("❌ Build Feedback Prompt should not run after weekly plan delivery")
-
-if run_data.get("Send Feedback Prompt"):
-    raise SystemExit("❌ Send Feedback Prompt should not run after weekly plan delivery")
-
-parse_runs = run_data.get("Parse Feedback") or []
-if not parse_runs:
-    raise SystemExit("❌ Parse Feedback output not found")
-
-parse_payload = None
-for run in parse_runs:
-    main = run.get("data", {}).get("main", [])
-    if main and main[0]:
-        parse_payload = main[0][0].get("json", {})
-        break
-
-if not parse_payload:
-    raise SystemExit("❌ Parse Feedback payload is empty")
-
-session_key = str(parse_payload.get("sessionKey", ""))
-if not re.search(r"-12345-1$", session_key):
-    raise SystemExit(f"❌ sessionKey should include message/user ids, got: {session_key!r}")
-
-if parse_payload.get("isLateResponse") is not False:
-    raise SystemExit("❌ Expected test callback to be classified as non-late feedback")
-
-feedback_type = str(parse_payload.get("type", ""))
-if feedback_type not in {"done", "skipped", "hard", "pain"}:
-    raise SystemExit(f"❌ Parsed feedback type is invalid: {feedback_type!r}")
-
-if parse_payload.get("response") != feedback_type:
-    raise SystemExit("❌ response alias should match type")
-
-if parse_payload.get("note", None) is not None:
-    raise SystemExit("❌ Expected note to default to null when omitted")
-
-for required in ["sessionRef", "date", "day", "timestamp"]:
-    if required not in parse_payload:
-        raise SystemExit(f"❌ Missing expected parsed field: {required}")
-
-print("✅ No immediate feedback prompt is sent and callback parsing remains valid")
-PY
-}
-
-verify_feedback_event_storage_and_aggregation() {
-  echo "▶️  Verifying FeedbackEvent write/read and aggregation"
-
-  local session_key run_id mid mongo_payload
-
-  read -r session_key run_id < <(python3 - "$EXECUTION_LOG" <<'PY'
-import json
-import re
-import sys
-from pathlib import Path
-
-log_path = sys.argv[1]
-text = Path(log_path).read_text()
-text = re.sub(r'\x1B\[[0-9;]*[A-Za-z]', '', text)
-decoder = json.JSONDecoder()
-candidate = None
-for match in re.finditer(r'\{', text):
-    idx = match.start()
-    try:
-        obj, _ = decoder.raw_decode(text[idx:])
-    except json.JSONDecodeError:
-        continue
-    if isinstance(obj, dict) and ("data" in obj or "resultData" in obj):
-        candidate = obj
-        break
-
-if candidate is None:
-    raise SystemExit("❌ Unable to find run data in execution log")
-
-data_root = candidate.get("data", candidate)
-run_data = data_root.get("resultData", {}).get("runData", {})
-parse_runs = run_data.get("Parse Feedback") or []
-if not parse_runs:
-    raise SystemExit("❌ Parse Feedback output not found")
-
-payload = None
-for run in parse_runs:
-    main = run.get("data", {}).get("main", [])
-    if main and main[0]:
-        payload = main[0][0].get("json", {})
-        break
-
-if not payload:
-    raise SystemExit("❌ Parse Feedback payload is empty")
-
-session_key = str(payload.get("sessionKey", "")).strip()
-run_id = str(payload.get("runId", "")).strip()
-if not session_key or not run_id:
-    raise SystemExit("❌ Missing sessionKey/runId in Parse Feedback payload")
-
-print(session_key, run_id)
-PY
-)
-
-  [[ -n "$session_key" && -n "$run_id" ]] || { echo "❌ Could not resolve feedback identifiers"; exit 1; }
-
-  mid=$("${COMPOSE_CMD[@]}" ps -q mongo)
-  [[ -n "$mid" ]] || { echo "❌ Unable to resolve mongo container id"; exit 1; }
-
-  mongo_payload="$(docker exec "$mid" mongosh --quiet "mongodb://localhost:27017/running_coach_itest" --eval "const doc = db.feedback_events.findOne({ sessionKey: '${session_key}' }); const agg = db.feedback_events.aggregate([{ \$match: { runId: '${run_id}' } }, { \$group: { _id: '\$type', count: { \$sum: 1 } } }]).toArray(); print(JSON.stringify({ doc, agg }));")"
-
-  python3 - "$mongo_payload" <<'PY'
-import json
-import sys
-
-raw = sys.argv[1].strip()
-if not raw:
-    raise SystemExit("❌ MongoDB verification returned empty output")
-
-try:
-    payload = json.loads(raw.splitlines()[-1])
-except json.JSONDecodeError as exc:
-    raise SystemExit(f"❌ Failed to parse MongoDB verification payload: {exc}")
-
-doc = payload.get("doc")
-if not isinstance(doc, dict):
-    raise SystemExit("❌ Feedback event was not persisted")
-
-required_fields = [
-    "sessionKey",
-    "sessionRef",
-    "runId",
-    "type",
-    "note",
-    "sessionDate",
-    "sessionDay",
-    "timestamp",
-]
-missing = [field for field in required_fields if field not in doc]
-if missing:
-    raise SystemExit(f"❌ Persisted feedback event is missing fields: {missing}")
-
-if doc.get("type") != "done":
-    raise SystemExit(f"❌ Persisted feedback type mismatch: {doc.get('type')!r}")
-
-if doc.get("note", None) is not None:
-    raise SystemExit("❌ Persisted feedback note should be null when omitted")
-
-agg = payload.get("agg")
-if not isinstance(agg, list):
-    raise SystemExit("❌ Aggregation output missing")
-
-done_count = 0
-for row in agg:
-    if isinstance(row, dict) and row.get("_id") == "done":
-        done_count = int(row.get("count", 0))
-        break
-
-if done_count < 1:
-    raise SystemExit(f"❌ Expected aggregated done feedback count >= 1, got {done_count}")
-
-print("✅ FeedbackEvent write/read and aggregation checks passed")
+print("✅ Run-event observability metadata is correct")
 PY
 }
 
@@ -1462,9 +1177,8 @@ docker info >/dev/null 2>&1 || {
 }
 
 rm -rf "$TMP_DIR"
-mkdir -p "$TMP_DIR" "$TMP_DIR/n8n"
-mkdir -p "$REPO_ROOT/.tmp/n8n"
-chmod -R 777 "$TMP_DIR" "$REPO_ROOT/.tmp/n8n"
+mkdir -p "$TMP_DIR" "$N8N_DATA_DIR"
+chmod -R 777 "$TMP_DIR" "$N8N_DATA_DIR"
 
 "${COMPOSE_CMD[@]}" down -v >/dev/null 2>&1 || true
 docker network create "$NETWORK_NAME" >/dev/null 2>&1 || true
@@ -1495,7 +1209,6 @@ CID=$("${COMPOSE_CMD[@]}" ps -q n8n)
 
 seed_credentials
 seed_weekly_metrics_history
-seed_feedback_events
 patch_workflow
 
 docker cp "$PATCHED_JSON" "$CID:/home/node/itest.workflow.json"
@@ -1514,7 +1227,7 @@ if [[ "$import_status" -ne 0 ]]; then
   exit "$import_status"
 fi
 set +e
-workflow_id="$(sqlite3 "$REPO_ROOT/.tmp/n8n/database.sqlite" "SELECT id FROM workflow_entity WHERE name = 'Running Coach' ORDER BY updatedAt DESC LIMIT 1;" 2>"$TMP_DIR/sqlite.err")"
+workflow_id="$(sqlite3 "$N8N_DATA_DIR/database.sqlite" "SELECT id FROM workflow_entity WHERE name = 'Running Coach' ORDER BY updatedAt DESC LIMIT 1;" 2>"$TMP_DIR/sqlite.err")"
 sqlite_status=$?
 set -e
 
@@ -1537,9 +1250,7 @@ verify_telegram_template
 verify_why_this_plan
 verify_preview_mode_metadata
 verify_risk_warning_metadata
-verify_feedback_adaptation_metadata
-verify_feedback_quick_replies
-verify_feedback_event_storage_and_aggregation
+verify_run_event_observability
 verify_reminder_delivery_and_metrics "$EXECUTION_LOG"
 
 echo "▶️  Executing workflow (reminder dedupe check)"

@@ -1,6 +1,6 @@
 # Data Lineage
 
-This document captures the MongoDB collections written by the workflow and how they are produced.
+This document captures the MongoDB collections written by the workflows and how they are produced.
 
 ## Collections
 
@@ -34,10 +34,12 @@ Purpose: capture Telegram feedback for completed sessions (done/skipped/hard/pai
 
 Written by:
 - `Parse Feedback` + `Feedback Events DB` (MongoDB node).
+- Workflow: `workflows/running_coach_feedback_workflow.json`
 
 Fields (top-level):
-- `sessionKey` (string, unique): `${runId}-${messageId|sessionDate}-${userId|anon}` for idempotency.
-- `sessionRef` (string): `${runId}-${messageId|sessionDate}` reference for a prompted session.
+- `sessionId` (string): session identifier encoded in callback payload (`session_feedback|runId|sessionId|type`).
+- `sessionKey` (string, unique): `${runId}-${sessionId}-${userId|anon}` for idempotency.
+- `sessionRef` (string): `${runId}-${sessionId}` reference for a prompted session.
 - `runId` (string): links feedback to the originating plan run.
 - `type` (string): `done`, `skipped`, `hard`, or `pain`.
 - `response` (string): backward-compatible alias of `type`.

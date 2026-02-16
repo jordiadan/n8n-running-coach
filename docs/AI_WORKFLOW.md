@@ -15,10 +15,10 @@ Language policy:
 - This rule applies even if a collaborator communicates in another language.
 
 Workflow source of truth and deployment:
-- `workflows/running_coach_workflow.json` is the single source of truth for the n8n workflow.
+- `workflows/running_coach_workflow.json` and `workflows/running_coach_feedback_workflow.json` are the sources of truth for n8n workflows.
 - Do not edit the workflow directly in the n8n UI except for emergency hotfixes.
-- Any workflow change must be made in the JSON file and go through a PR.
-- Deployment must import the JSON into n8n so production matches the repo version.
+- Any workflow change must be made in the corresponding JSON file and go through a PR.
+- Deployment must import workflow JSON files into n8n so production matches the repo version.
 
 ## 1) One Jira ticket = one branch
 

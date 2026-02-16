@@ -13,13 +13,15 @@ This project collects training and wellness data, computes weekly load/recovery 
 - Builds a structured coaching prompt for OpenAI.
 - Requests a weekly plan as strict JSON output.
 - Formats that output as an HTML message and sends it to Telegram.
-- Parses Telegram feedback callbacks (done/skipped/hard/pain) for future adaptation.
+- Uses a dedicated async workflow for session-level Telegram feedback callbacks (`session_feedback|runId|sessionId|type`).
 - Supports optional daily reminders tied to the planned session of the day.
 - Supports both manual execution and scheduled execution in n8n.
 
 ## End-to-End Workflow
 
-Main workflow file: `workflows/running_coach_workflow.json`
+Main workflow files:
+- `workflows/running_coach_workflow.json` (weekly planning + delivery)
+- `workflows/running_coach_feedback_workflow.json` (session feedback callback ingestion)
 
 1. Trigger:
    - Manual trigger (`When clicking 'Execute workflow'`)
@@ -57,6 +59,7 @@ Main workflow file: `workflows/running_coach_workflow.json`
 ## Repository Layout
 
 - `workflows/running_coach_workflow.json`: n8n workflow definition.
+- `workflows/running_coach_feedback_workflow.json`: n8n workflow for session-feedback ingestion.
 - `tests/run-it.sh`: full integration test runner.
 - `tests/mockserver-expectations.json`: mocked API payloads for tests.
 - `tests/credentials/mongo.json`: n8n credential fixture for Mongo tests.
@@ -71,7 +74,7 @@ Main workflow file: `workflows/running_coach_workflow.json`
 
 ## Workflow Versioning and Deployment
 
-- `workflows/running_coach_workflow.json` is the single source of truth for the workflow.
+- `workflows/running_coach_workflow.json` and `workflows/running_coach_feedback_workflow.json` are the workflow sources of truth.
 - Do not edit the workflow directly in the n8n UI except for emergency hotfixes.
 - All workflow changes must go through PRs and update the JSON file.
 - Deployments must import the JSON into n8n so production matches the repo version.
@@ -92,7 +95,7 @@ This repository currently focuses on integration testing and deployment, not a f
 
 You can:
 
-- Import `workflows/running_coach_workflow.json` in your n8n instance.
+- Import both workflow JSON files in your n8n instance.
 - Configure credentials in n8n (Intervals.icu, MongoDB, OpenAI, Telegram).
 - Execute manually from n8n UI.
 
@@ -102,6 +105,7 @@ Run:
 
 ```bash
 bash tests/run-it.sh
+bash tests/run-feedback-it.sh
 ```
 
 What the integration test does:
@@ -116,6 +120,7 @@ What the integration test does:
 - Executes it via n8n CLI.
 - Verifies that all workflow nodes are executed at least once
   (except schedule trigger, which is intentionally skipped).
+- `tests/run-feedback-it.sh` validates session callback parsing, late-feedback gating, and `feedback_events` persistence in the dedicated feedback workflow.
 
 ## Schema Validation
 
@@ -212,7 +217,7 @@ For complete rules, see:
 - Success events also persist Telegram template metadata (`telegramTemplateVersion`, `sectionCompleteness`, `sectionMissingCount`).
 - Telegram rationale telemetry is stored per run (`whyThisPlan`, `whyPlanMetricKeys`, `whyPlanHallucinationFailures`).
 - Success events also store preview routing metadata (`previewMode`, `previewChatId`).
-- Success events also persist risk-warning metadata (`riskWarningTriggerCount`, `riskWarningTriggers`, `riskWarningTriggerCounts`, `riskFeedback`).
+- Success events also persist risk-warning metadata (`riskWarningTriggerCount`, `riskWarningTriggers`, `riskWarningTriggerCounts`).
 - Feedback replies are persisted in `feedback_events` for compliance and recovery signals.
 - Reminder executions are persisted in `reminder_events` and `run_events` with `reminder_sent_count` and `reminder_opt_in_users_count`.
 - Validation failures send a Telegram alert before the workflow throws the fallback error.

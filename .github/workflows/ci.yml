@@ -50,7 +50,9 @@ jobs:
       - name: Run integration tests
         env:
           KEEP_TMP: 1
-        run: bash tests/run-it.sh
+        run: |
+          bash tests/run-it.sh
+          bash tests/run-feedback-it.sh
 
       - name: Upload test artifacts (on failure)
         if: failure()
