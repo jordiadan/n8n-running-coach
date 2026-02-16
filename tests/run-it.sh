@@ -235,11 +235,6 @@ patch_workflow() {
         | .typeVersion = 2
         | .parameters = {jsCode: $js_telegram}
         | del(.credentials)
-      elif .name == "Send Feedback Prompt" then
-        .type = "n8n-nodes-base.code"
-        | .typeVersion = 2
-        | .parameters = {jsCode: $js_telegram}
-        | del(.credentials)
       elif .name == "Send Feedback Ack" then
         .type = "n8n-nodes-base.code"
         | .typeVersion = 2
@@ -265,7 +260,7 @@ patch_workflow() {
     | .connections["Build Run Event (success)"].main[0] += [
         { "node": "Build Reminder Context", "type": "main", "index": 0 }
       ]
-    | .connections["Build Feedback Prompt"].main[0] += [
+    | .connections["Build Telegram Message"].main[0] += [
         { "node": "Telegram Feedback Trigger", "type": "main", "index": 0 }
       ]
   ' "$WORKFLOW_FILE" > "$PATCHED_JSON"
@@ -1020,7 +1015,7 @@ PY
 }
 
 verify_feedback_quick_replies() {
-  echo "▶️  Verifying quick-feedback buttons and callback parsing"
+  echo "▶️  Verifying no immediate feedback prompt and callback parsing"
 
   python3 - "$EXECUTION_LOG" <<'PY'
 import json
@@ -1049,37 +1044,11 @@ if candidate is None:
 data_root = candidate.get("data", candidate)
 run_data = data_root.get("resultData", {}).get("runData", {})
 
-prompt_runs = run_data.get("Build Feedback Prompt") or []
-if not prompt_runs:
-    raise SystemExit("❌ Build Feedback Prompt output not found")
+if run_data.get("Build Feedback Prompt"):
+    raise SystemExit("❌ Build Feedback Prompt should not run after weekly plan delivery")
 
-prompt_payload = None
-for run in prompt_runs:
-    main = run.get("data", {}).get("main", [])
-    if main and main[0]:
-        prompt_payload = main[0][0].get("json", {})
-        break
-
-if not prompt_payload:
-    raise SystemExit("❌ Build Feedback Prompt payload is empty")
-
-keyboard = prompt_payload.get("replyMarkup", {}).get("inline_keyboard", [])
-buttons = []
-for row in keyboard:
-    for button in row:
-        if isinstance(button, dict):
-            buttons.append(button)
-
-button_texts = [str(button.get("text", "")) for button in buttons]
-expected_texts = ["✅ Done", "❌ Skipped", "😵 Hard", "🦵 Pain"]
-for expected in expected_texts:
-    if expected not in button_texts:
-        raise SystemExit(f"❌ Missing quick-feedback button: {expected}")
-
-callback_values = [str(button.get("callback_data", "")) for button in buttons]
-for response in ["done", "skipped", "hard", "pain"]:
-    if not any(value.startswith("feedback|") and value.endswith(f"|{response}") for value in callback_values):
-        raise SystemExit(f"❌ Missing callback_data for response '{response}'")
+if run_data.get("Send Feedback Prompt"):
+    raise SystemExit("❌ Send Feedback Prompt should not run after weekly plan delivery")
 
 parse_runs = run_data.get("Parse Feedback") or []
 if not parse_runs:
@@ -1116,7 +1085,7 @@ for required in ["sessionRef", "date", "day", "timestamp"]:
     if required not in parse_payload:
         raise SystemExit(f"❌ Missing expected parsed field: {required}")
 
-print("✅ Quick-feedback buttons and callback parsing are valid")
+print("✅ No immediate feedback prompt is sent and callback parsing remains valid")
 PY
 }
 
