@@ -97,7 +97,7 @@ from pathlib import Path
 
 src = Path(sys.argv[1])
 dst = Path(sys.argv[2])
-allowed = {"name", "nodes", "connections", "settings"}
+allowed = {"name", "nodes", "connections", "settings", "active"}
 data = json.loads(src.read_text())
 sanitized = {k: data[k] for k in allowed if k in data}
 dst.write_text(json.dumps(sanitized))
@@ -117,7 +117,7 @@ from pathlib import Path
 local_path = Path(sys.argv[1])
 remote_path = Path(sys.argv[2])
 label = sys.argv[3]
-allowed = {"name", "nodes", "connections", "settings"}
+allowed = {"name", "nodes", "connections", "settings", "active"}
 drop_keys = {"webhookId"}
 
 def scrub(obj):

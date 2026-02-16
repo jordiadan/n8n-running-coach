@@ -11,6 +11,7 @@ COMPOSE_FILE="$REPO_ROOT/docker-compose.itest.yml"
 CREDS_FILE="$REPO_ROOT/tests/credentials/mongo.json"
 PATCHED_JSON="$TMP_DIR/running-coach-feedback.itest.json"
 EXECUTION_LOG="$TMP_DIR/execution.feedback.log"
+EXECUTION_LOG_LEGACY="$TMP_DIR/execution.feedback.legacy.log"
 EXECUTION_LOG_LATE="$TMP_DIR/execution.feedback.late.log"
 
 N8N_HOST="localhost"
@@ -111,18 +112,23 @@ seed_credentials() {
 
 patch_workflow() {
   local days_old=${1:-0}
+  local callback_mode=${2:-session}
   echo "▶️  Patching feedback workflow JSON"
   local js_mock_trigger js_mock_telegram
 
   js_mock_trigger=$(cat <<'EOF'
 const daysOld = __DAYS_OLD__;
+const callbackMode = "__CALLBACK_MODE__";
 const nowMs = Date.now() - (daysOld * 86400000);
-const runId = `itest-run-feedback-${daysOld}`;
+const runId = `itest-run-feedback-${callbackMode}-${daysOld}`;
 const sessionId = `session-${daysOld}-wed-vo2`;
+const callbackData = callbackMode === "legacy"
+  ? `feedback|${runId}|done`
+  : `session_feedback|${runId}|${sessionId}|done`;
 return [{
   json: {
     callback_query: {
-      data: `session_feedback|${runId}|${sessionId}|done`,
+      data: callbackData,
       from: { id: 1, username: "itest" },
       message: {
         message_id: 12345 + daysOld,
@@ -135,6 +141,7 @@ return [{
 EOF
 )
   js_mock_trigger="${js_mock_trigger/__DAYS_OLD__/$days_old}"
+  js_mock_trigger="${js_mock_trigger/__CALLBACK_MODE__/$callback_mode}"
 
   js_mock_telegram=$'return items.map(item => ({\n  json: {\n    ok: true,\n    chatId: item.json.chatId,\n    isLateResponse: item.json.isLateResponse,\n    type: item.json.type,\n    promptAgeDays: item.json.promptAgeDays\n  }\n}));'
 
@@ -292,6 +299,90 @@ print("✅ Non-late feedback persisted")
 PY
 }
 
+verify_legacy_feedback() {
+  echo "▶️  Verifying legacy callback format compatibility"
+
+  read -r session_key run_id < <(python3 - "$EXECUTION_LOG_LEGACY" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+text = Path(sys.argv[1]).read_text()
+text = re.sub(r'\x1B\[[0-9;]*[A-Za-z]', '', text)
+decoder = json.JSONDecoder()
+candidate = None
+for match in re.finditer(r'\{', text):
+    idx = match.start()
+    try:
+        obj, _ = decoder.raw_decode(text[idx:])
+    except json.JSONDecodeError:
+        continue
+    if isinstance(obj, dict) and ("data" in obj or "resultData" in obj):
+        candidate = obj
+        break
+
+if candidate is None:
+    raise SystemExit("❌ Unable to find run data in legacy execution log")
+
+run_data = candidate.get("data", candidate).get("resultData", {}).get("runData", {})
+parse_runs = run_data.get("Parse Feedback") or []
+db_runs = run_data.get("Feedback Events DB") or []
+ack_runs = run_data.get("Send Feedback Ack") or []
+
+if not parse_runs:
+    raise SystemExit("❌ Parse Feedback output not found for legacy callback")
+if not db_runs:
+    raise SystemExit("❌ Feedback Events DB should run for legacy callback")
+if not ack_runs:
+    raise SystemExit("❌ Send Feedback Ack output not found for legacy callback")
+
+payload = parse_runs[0].get("data", {}).get("main", [[{}]])[0][0].get("json", {})
+if payload.get("isLateResponse") is not False:
+    raise SystemExit("❌ Expected non-late legacy feedback")
+
+session_id = str(payload.get("sessionId", "")).strip()
+if not session_id.startswith("legacy-"):
+    raise SystemExit(f"❌ Legacy callback should generate fallback sessionId, got {session_id!r}")
+
+session_key = str(payload.get("sessionKey", "")).strip()
+run_id = str(payload.get("runId", "")).strip()
+if not session_key or not run_id:
+    raise SystemExit("❌ sessionKey/runId missing in legacy Parse Feedback payload")
+
+print(session_key, run_id)
+PY
+)
+
+  [[ -n "$session_key" && -n "$run_id" ]] || { echo "❌ Missing legacy session key/run id"; exit 1; }
+
+  local mid mongo_payload
+  mid=$("${COMPOSE_CMD[@]}" ps -q mongo)
+  [[ -n "$mid" ]] || { echo "❌ Unable to resolve mongo container id"; exit 1; }
+
+  mongo_payload="$(docker exec "$mid" mongosh --quiet "mongodb://localhost:27017/running_coach_itest" --eval "const doc = db.feedback_events.findOne({ sessionKey: '${session_key}' }); print(JSON.stringify(doc || {}));")"
+
+  python3 - "$mongo_payload" "$run_id" <<'PY'
+import json
+import sys
+
+raw = sys.argv[1].strip()
+run_id = sys.argv[2]
+if not raw:
+    raise SystemExit("❌ Empty mongo response for legacy feedback document")
+
+doc = json.loads(raw.splitlines()[-1])
+if not isinstance(doc, dict) or not doc:
+    raise SystemExit("❌ Legacy feedback event was not persisted")
+if str(doc.get("runId")) != run_id:
+    raise SystemExit("❌ Persisted legacy feedback runId mismatch")
+if doc.get("type") != "done":
+    raise SystemExit("❌ Persisted legacy feedback type mismatch")
+
+print("✅ Legacy callback feedback persisted")
+PY
+}
+
 verify_late_feedback() {
   echo "▶️  Verifying late feedback is not persisted"
 
@@ -388,7 +479,7 @@ CID=$("${COMPOSE_CMD[@]}" ps -q n8n)
 [[ -n "$CID" ]] || { echo "❌ Unable to resolve n8n container id"; exit 1; }
 
 seed_credentials
-patch_workflow 0
+patch_workflow 0 session
 
 echo "▶️  Importing feedback workflow"
 import_patched_workflow
@@ -410,8 +501,16 @@ echo "▶️  Executing feedback workflow (non-late callback)"
 execute_workflow "$EXECUTION_LOG" ""
 verify_non_late_feedback
 
+echo "▶️  Re-importing feedback workflow with legacy callback fixture"
+patch_workflow 0 legacy
+import_patched_workflow
+
+echo "▶️  Executing feedback workflow (legacy callback)"
+execute_workflow "$EXECUTION_LOG_LEGACY" ""
+verify_legacy_feedback
+
 echo "▶️  Re-importing feedback workflow with late callback fixture"
-patch_workflow 21
+patch_workflow 21 session
 import_patched_workflow
 
 echo "▶️  Executing feedback workflow (late callback)"
