@@ -56,7 +56,6 @@ Fields (top-level):
 Notes:
 - The workflow uses `findOneAndUpdate` with `updateKey: sessionKey` to prevent duplicates.
 - Late feedback (`isLateResponse=true`) is acknowledged but not persisted.
-- Weekly plan delivery does not emit an immediate feedback prompt; this collection is populated only when feedback callbacks are received.
 
 ### weekly_metrics
 

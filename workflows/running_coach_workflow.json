@@ -688,43 +688,6 @@
       }
     },
     {
-      "id": "3623b766-3f29-4593-b706-255a8becd8c3",
-      "name": "Build Feedback Prompt",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1800,
-        448
-      ],
-      "parameters": {
-        "jsCode": "const DEFAULT_CHAT_ID = '730354404';\n\nconst getVar = (key) => {\n  if (typeof $vars !== 'undefined' && $vars[key] != null) {\n    return String($vars[key]);\n  }\n  if (typeof process !== 'undefined' && process.env && process.env[key] != null) {\n    return String(process.env[key]);\n  }\n  return '';\n};\n\nconst isTruthy = (value) => ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());\n\nconst previewEnabled = isTruthy(getVar('RC_TELEGRAM_PREVIEW_MODE'));\nconst previewChatRaw = getVar('RC_TELEGRAM_PREVIEW_CHAT_ID').trim();\nif (previewEnabled && !previewChatRaw) {\n  throw new Error('RC_TELEGRAM_PREVIEW_CHAT_ID is required when RC_TELEGRAM_PREVIEW_MODE is enabled.');\n}\nconst targetChatId = previewEnabled ? previewChatRaw : DEFAULT_CHAT_ID;\n\nconst runContextItems = $items('Prompt Builder');\nconst runContext = runContextItems.length ? runContextItems[0].json : {};\nconst plan = $json.activityPlan || {};\nconst nextWeek = plan.nextWeek || {};\nconst runId = (runContext.runId || $json.runId || ($json.runEvent && $json.runEvent.runId) || $json.__runId || null);\nif (!runId) { return []; }\n\nconst weekLabel = (nextWeek.weekStart && nextWeek.weekEnd) ? `${nextWeek.weekStart} → ${nextWeek.weekEnd}` : 'this week';\nconst text = [\n  previewEnabled ? '🧪 <b>Preview mode</b>' : null,\n  `📝 <b>Quick feedback</b> (${weekLabel})`,\n  'How did your latest session feel?',\n  'Tap one option:'\n].filter(Boolean).join('\\n');\n\nconst replyMarkup = {\n  inline_keyboard: [\n    [{ text: '✅ Done', callback_data: `feedback|${runId}|done` }],\n    [{ text: '❌ Skipped', callback_data: `feedback|${runId}|skipped` }],\n    [{ text: '😵 Hard', callback_data: `feedback|${runId}|hard` }],\n    [{ text: '🦵 Pain', callback_data: `feedback|${runId}|pain` }],\n  ]\n};\n\nreturn [{\n  json: {\n    chatId: targetChatId,\n    text,\n    replyMarkup,\n    runId,\n    previewMode: previewEnabled,\n    previewChatId: targetChatId,\n  }\n}];\n"
-      }
-    },
-    {
-      "id": "81adaf55-23cc-466c-8876-c4ff27f4073b",
-      "name": "Send Feedback Prompt",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        2000,
-        448
-      ],
-      "parameters": {
-        "chatId": "={{ $json.chatId }}",
-        "text": "={{ $json.text }}",
-        "additionalFields": {
-          "parse_mode": "HTML",
-          "replyMarkup": "={{ JSON.stringify($json.replyMarkup) }}"
-        }
-      },
-      "credentials": {
-        "telegramApi": {
-          "id": "hdQmaYn1B2efrJvB",
-          "name": "Telegram account"
-        }
-      }
-    },
-    {
       "id": "d2b2cc48-5fe2-4dac-8bd5-5edfc8984a54",
       "name": "Telegram Feedback Trigger",
       "type": "n8n-nodes-base.telegramTrigger",
@@ -1434,17 +1397,6 @@
     },
     "Run Artifacts DB (outputs)": {
       "main": []
-    },
-    "Build Feedback Prompt": {
-      "main": [
-        [
-          {
-            "node": "Send Feedback Prompt",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
     },
     "Telegram Feedback Trigger": {
       "main": [

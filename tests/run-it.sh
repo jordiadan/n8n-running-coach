@@ -235,11 +235,6 @@ patch_workflow() {
         | .typeVersion = 2
         | .parameters = {jsCode: $js_telegram}
         | del(.credentials)
-      elif .name == "Send Feedback Prompt" then
-        .type = "n8n-nodes-base.code"
-        | .typeVersion = 2
-        | .parameters = {jsCode: $js_telegram}
-        | del(.credentials)
       elif .name == "Send Feedback Ack" then
         .type = "n8n-nodes-base.code"
         | .typeVersion = 2
@@ -362,8 +357,6 @@ PY
       "$(jq -r '.nodes[] | select(.name == "Build Failure Event") | .name' "$WORKFLOW_FILE")" \
       "$(jq -r '.nodes[] | select(.name == "Run Events DB (failure)") | .name' "$WORKFLOW_FILE")" \
       "$(jq -r '.nodes[] | select(.name == "Send Failure Alert") | .name' "$WORKFLOW_FILE")" \
-      "$(jq -r '.nodes[] | select(.name == "Build Feedback Prompt") | .name' "$WORKFLOW_FILE")" \
-      "$(jq -r '.nodes[] | select(.name == "Send Feedback Prompt") | .name' "$WORKFLOW_FILE")" \
     | sed '/^$/d'
   )"
 

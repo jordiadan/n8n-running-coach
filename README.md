@@ -14,7 +14,6 @@ This project collects training and wellness data, computes weekly load/recovery 
 - Requests a weekly plan as strict JSON output.
 - Formats that output as an HTML message and sends it to Telegram.
 - Parses Telegram feedback callbacks (done/skipped/hard/pain) for future adaptation.
-- Does not send an immediate feedback prompt right after weekly plan delivery.
 - Supports optional daily reminders tied to the planned session of the day.
 - Supports both manual execution and scheduled execution in n8n.
 
