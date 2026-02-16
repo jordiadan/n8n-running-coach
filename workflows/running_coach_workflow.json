@@ -688,87 +688,6 @@
       }
     },
     {
-      "id": "d2b2cc48-5fe2-4dac-8bd5-5edfc8984a54",
-      "name": "Telegram Feedback Trigger",
-      "type": "n8n-nodes-base.telegramTrigger",
-      "typeVersion": 1,
-      "position": [
-        -200,
-        -200
-      ],
-      "parameters": {
-        "updates": [
-          "callback_query"
-        ]
-      },
-      "credentials": {
-        "telegramApi": {
-          "id": "hdQmaYn1B2efrJvB",
-          "name": "Telegram account"
-        }
-      }
-    },
-    {
-      "id": "4febcf54-ca29-4bdb-b2f4-e28c880f9b95",
-      "name": "Parse Feedback",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        0,
-        -200
-      ],
-      "parameters": {
-        "jsCode": "const update = items[0].json || {};\nconst callback = update.callback_query || update.body?.callback_query || null;\nif (!callback || !callback.data) { return []; }\n\nconst parts = String(callback.data).split('|');\nif (parts[0] !== 'feedback' || parts.length < 3) { return []; }\n\nconst runId = parts[1];\nconst type = parts[2].toLowerCase().trim();\nconst allowedTypes = new Set(['done', 'skipped', 'hard', 'pain']);\nif (!allowedTypes.has(type)) { return []; }\n\nconst noteRaw = parts.length > 3 ? parts.slice(3).join('|') : '';\nconst decodeNote = (value) => {\n  try {\n    return decodeURIComponent(value);\n  } catch {\n    return value;\n  }\n};\nconst noteDecoded = noteRaw ? decodeNote(noteRaw) : '';\nconst note = noteDecoded.trim() || null;\n\nconst message = callback.message || {};\nconst chatId = message.chat && message.chat.id ? String(message.chat.id) : null;\nconst messageId = message.message_id || null;\nconst messageDate = message.date ? new Date(message.date * 1000) : new Date();\nconst now = new Date();\nconst nowIso = now.toISOString();\nconst sessionDate = messageDate.toISOString().slice(0, 10);\nconst sessionDay = messageDate.toLocaleDateString('en-US', { weekday: 'long' });\nconst promptAgeDays = Math.floor(Math.max(now.getTime() - messageDate.getTime(), 0) / 86400000);\nconst isLateResponse = promptAgeDays > 14;\n\nconst user = callback.from || {};\nconst userId = user.id || null;\nconst sessionRef = `${runId}-${messageId || sessionDate}`;\nconst sessionKey = `${sessionRef}-${userId || 'anon'}`;\n\nreturn [{\n  json: {\n    sessionKey,\n    sessionRef,\n    runId,\n    type,\n    response: type,\n    note,\n    sessionDate,\n    date: sessionDate,\n    sessionDay,\n    day: sessionDay,\n    chatId,\n    messageId,\n    userId,\n    username: user.username || null,\n    promptSentAt: messageDate.toISOString(),\n    promptAgeDays,\n    isLateResponse,\n    timestamp: nowIso,\n    receivedAt: nowIso,\n  }\n}];\n"
-      }
-    },
-    {
-      "id": "71c41d55-4ed9-4934-ad94-1d6044774104",
-      "name": "Feedback Events DB",
-      "type": "n8n-nodes-base.mongoDb",
-      "typeVersion": 1.2,
-      "position": [
-        220,
-        -200
-      ],
-      "alwaysOutputData": true,
-      "parameters": {
-        "operation": "findOneAndUpdate",
-        "collection": "feedback_events",
-        "updateKey": "sessionKey",
-        "fields": "sessionKey, sessionRef, runId, type, response, note, sessionDate, date, sessionDay, day, chatId, messageId, userId, username, promptSentAt, promptAgeDays, isLateResponse, timestamp, receivedAt",
-        "upsert": true,
-        "options": {
-          "dateFields": "timestamp,receivedAt"
-        }
-      },
-      "credentials": {
-        "mongoDb": {
-          "id": "8KyRHmD3ScRn2PPF",
-          "name": "MongoDB account"
-        }
-      }
-    },
-    {
-      "id": "3c6afed0-56fe-4a6c-b0f2-59fee294b969",
-      "name": "Send Feedback Ack",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        440,
-        -200
-      ],
-      "parameters": {
-        "chatId": "={{ $json.chatId }}",
-        "text": "={{ $json.isLateResponse ? `⚠️ Feedback ignored: this prompt is ${$json.promptAgeDays} days old. Please answer from your latest weekly message.` : `✅ Feedback saved: ${$json.type || $json.response}` }}"
-      },
-      "credentials": {
-        "telegramApi": {
-          "id": "hdQmaYn1B2efrJvB",
-          "name": "Telegram account"
-        }
-      }
-    },
-    {
       "parameters": {
         "collection": "feedback_events",
         "options": {
@@ -804,26 +723,6 @@
       ],
       "id": "799a0656-9818-4e74-9046-5c70b2898757",
       "name": "Summarize Pain Feedback"
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "boolean": [
-            {
-              "value1": "={{ $json.isLateResponse }}",
-              "operation": "isTrue"
-            }
-          ]
-        }
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        220,
-        -320
-      ],
-      "id": "f0b90789-89af-4b90-a1a5-df6507a43f63",
-      "name": "Is Feedback Late?"
     },
     {
       "id": "e2034a41-23b2-4eff-aa0c-3baad42ad4b3",
@@ -1311,9 +1210,6 @@
         ]
       ]
     },
-    "Fallback Trigger": {
-      "main": []
-    },
     "Build Run Event (success)": {
       "main": [
         [
@@ -1378,53 +1274,11 @@
         ]
       ]
     },
-    "Plan Snapshots DB": {
-      "main": []
-    },
     "Build Run Artifact (outputs)": {
       "main": [
         [
           {
             "node": "Run Artifacts DB (outputs)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Run Artifacts DB (inputs)": {
-      "main": []
-    },
-    "Run Artifacts DB (outputs)": {
-      "main": []
-    },
-    "Telegram Feedback Trigger": {
-      "main": [
-        [
-          {
-            "node": "Parse Feedback",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Parse Feedback": {
-      "main": [
-        [
-          {
-            "node": "Is Feedback Late?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Feedback Events DB": {
-      "main": [
-        [
-          {
-            "node": "Send Feedback Ack",
             "type": "main",
             "index": 0
           }
@@ -1449,24 +1303,6 @@
             "node": "Merge Plan + Risk Feedback",
             "type": "main",
             "index": 1
-          }
-        ]
-      ]
-    },
-    "Is Feedback Late?": {
-      "main": [
-        [
-          {
-            "node": "Feedback Events DB",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Send Feedback Ack",
-            "type": "main",
-            "index": 0
           }
         ]
       ]
