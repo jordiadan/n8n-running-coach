@@ -4,6 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TMP_DIR="$REPO_ROOT/.tmp"
+N8N_DATA_DIR="${N8N_DATA_DIR:-$TMP_DIR/n8n}"
+export N8N_DATA_DIR
 
 COMPOSE_FILE="$REPO_ROOT/docker-compose.itest.yml"
 MOCKS_FILE="$REPO_ROOT/tests/mockserver-expectations.json"
@@ -1257,9 +1259,8 @@ docker info >/dev/null 2>&1 || {
 }
 
 rm -rf "$TMP_DIR"
-mkdir -p "$TMP_DIR" "$TMP_DIR/n8n"
-mkdir -p "$REPO_ROOT/.tmp/n8n"
-chmod -R 777 "$TMP_DIR" "$REPO_ROOT/.tmp/n8n"
+mkdir -p "$TMP_DIR" "$N8N_DATA_DIR"
+chmod -R 777 "$TMP_DIR" "$N8N_DATA_DIR"
 
 "${COMPOSE_CMD[@]}" down -v >/dev/null 2>&1 || true
 docker network create "$NETWORK_NAME" >/dev/null 2>&1 || true
@@ -1309,7 +1310,7 @@ if [[ "$import_status" -ne 0 ]]; then
   exit "$import_status"
 fi
 set +e
-workflow_id="$(sqlite3 "$REPO_ROOT/.tmp/n8n/database.sqlite" "SELECT id FROM workflow_entity WHERE name = 'Running Coach' ORDER BY updatedAt DESC LIMIT 1;" 2>"$TMP_DIR/sqlite.err")"
+workflow_id="$(sqlite3 "$N8N_DATA_DIR/database.sqlite" "SELECT id FROM workflow_entity WHERE name = 'Running Coach' ORDER BY updatedAt DESC LIMIT 1;" 2>"$TMP_DIR/sqlite.err")"
 sqlite_status=$?
 set -e
 

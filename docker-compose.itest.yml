@@ -56,7 +56,7 @@ services:
       WEBHOOK_TUNNEL_URL: http://localhost:5678
       WEBHOOK_URL: http://localhost:5678
     volumes:
-      - ./.tmp/n8n:/home/node/.n8n
+      - ${N8N_DATA_DIR:-./.tmp/n8n}:/home/node/.n8n
     networks:
       - integration
 
