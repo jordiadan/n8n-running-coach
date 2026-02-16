@@ -91,17 +91,17 @@ jobs:
             local src=$1
             local dst=$2
             python3 - "$src" "$dst" <<'PY'
-import json
-import sys
-from pathlib import Path
+          import json
+          import sys
+          from pathlib import Path
 
-src = Path(sys.argv[1])
-dst = Path(sys.argv[2])
-allowed = {"name", "nodes", "connections", "settings", "active"}
-data = json.loads(src.read_text())
-sanitized = {k: data[k] for k in allowed if k in data}
-dst.write_text(json.dumps(sanitized))
-PY
+          src = Path(sys.argv[1])
+          dst = Path(sys.argv[2])
+          allowed = {"name", "nodes", "connections", "settings", "active"}
+          data = json.loads(src.read_text())
+          sanitized = {k: data[k] for k in allowed if k in data}
+          dst.write_text(json.dumps(sanitized))
+          PY
           }
 
           verify_workflow() {
@@ -109,94 +109,94 @@ PY
             local remote_path=$2
             local label=$3
             python3 - "$local_path" "$remote_path" "$label" <<'PY'
-import hashlib
-import json
-import sys
-from pathlib import Path
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
 
-local_path = Path(sys.argv[1])
-remote_path = Path(sys.argv[2])
-label = sys.argv[3]
-allowed = {"name", "nodes", "connections", "settings", "active"}
-drop_keys = {"webhookId"}
+          local_path = Path(sys.argv[1])
+          remote_path = Path(sys.argv[2])
+          label = sys.argv[3]
+          allowed = {"name", "nodes", "connections", "settings", "active"}
+          drop_keys = {"webhookId"}
 
-def scrub(obj):
-    if isinstance(obj, dict):
-        cleaned = {}
-        for k, v in obj.items():
-            if k in drop_keys:
-                continue
-            if k == "credentials" and isinstance(v, dict):
-                cleaned[k] = {name: {} for name in v.keys()}
-                continue
-            cleaned[k] = scrub(v)
-        return cleaned
-    if isinstance(obj, list):
-        return [scrub(v) for v in obj]
-    return obj
+          def scrub(obj):
+              if isinstance(obj, dict):
+                  cleaned = {}
+                  for k, v in obj.items():
+                      if k in drop_keys:
+                          continue
+                      if k == "credentials" and isinstance(v, dict):
+                          cleaned[k] = {name: {} for name in v.keys()}
+                          continue
+                      cleaned[k] = scrub(v)
+                  return cleaned
+              if isinstance(obj, list):
+                  return [scrub(v) for v in obj]
+              return obj
 
-def normalize_nodes(nodes):
-    normalized = []
-    for node in nodes:
-        if not isinstance(node, dict):
-            continue
-        node = scrub(node)
-        node.pop("id", None)
-        normalized.append(node)
-    normalized.sort(key=lambda item: item.get("name", ""))
-    return normalized
+          def normalize_nodes(nodes):
+              normalized = []
+              for node in nodes:
+                  if not isinstance(node, dict):
+                      continue
+                  node = scrub(node)
+                  node.pop("id", None)
+                  normalized.append(node)
+              normalized.sort(key=lambda item: item.get("name", ""))
+              return normalized
 
-def normalize_connections(connections):
-    if not isinstance(connections, dict):
-        return connections
-    normalized = {}
-    for source, types in connections.items():
-        if not isinstance(types, dict):
-            normalized[source] = types
-            continue
-        normalized_types = {}
-        for conn_type, groups in types.items():
-            if not isinstance(groups, list):
-                normalized_types[conn_type] = groups
-                continue
-            normalized_groups = []
-            for group in groups:
-                if isinstance(group, list):
-                    sorted_group = sorted(
-                        (scrub(item) for item in group if isinstance(item, dict)),
-                        key=lambda item: (item.get("node", ""), item.get("type", ""), item.get("index", 0)),
-                    )
-                    normalized_groups.append(sorted_group)
-                else:
-                    normalized_groups.append(group)
-            normalized_types[conn_type] = normalized_groups
-        normalized[source] = normalized_types
-    return normalized
+          def normalize_connections(connections):
+              if not isinstance(connections, dict):
+                  return connections
+              normalized = {}
+              for source, types in connections.items():
+                  if not isinstance(types, dict):
+                      normalized[source] = types
+                      continue
+                  normalized_types = {}
+                  for conn_type, groups in types.items():
+                      if not isinstance(groups, list):
+                          normalized_types[conn_type] = groups
+                          continue
+                      normalized_groups = []
+                      for group in groups:
+                          if isinstance(group, list):
+                              sorted_group = sorted(
+                                  (scrub(item) for item in group if isinstance(item, dict)),
+                                  key=lambda item: (item.get("node", ""), item.get("type", ""), item.get("index", 0)),
+                              )
+                              normalized_groups.append(sorted_group)
+                          else:
+                              normalized_groups.append(group)
+                      normalized_types[conn_type] = normalized_groups
+                  normalized[source] = normalized_types
+              return normalized
 
-def canonical(obj):
-    return json.dumps(obj, sort_keys=True, separators=(",", ":")).encode()
+          def canonical(obj):
+              return json.dumps(obj, sort_keys=True, separators=(",", ":")).encode()
 
-local = scrub(json.loads(local_path.read_text()))
-remote_raw = json.loads(remote_path.read_text())
-remote = scrub({k: remote_raw[k] for k in allowed if k in remote_raw})
+          local = scrub(json.loads(local_path.read_text()))
+          remote_raw = json.loads(remote_path.read_text())
+          remote = scrub({k: remote_raw[k] for k in allowed if k in remote_raw})
 
-local["nodes"] = normalize_nodes(local.get("nodes", []))
-remote["nodes"] = normalize_nodes(remote.get("nodes", []))
-local["connections"] = normalize_connections(local.get("connections", {}))
-remote["connections"] = normalize_connections(remote.get("connections", {}))
+          local["nodes"] = normalize_nodes(local.get("nodes", []))
+          remote["nodes"] = normalize_nodes(remote.get("nodes", []))
+          local["connections"] = normalize_connections(local.get("connections", {}))
+          remote["connections"] = normalize_connections(remote.get("connections", {}))
 
-local_settings = local.get("settings", {})
-remote_settings = remote.get("settings", {})
-if isinstance(local_settings, dict) and isinstance(remote_settings, dict):
-    remote["settings"] = {k: remote_settings.get(k) for k in local_settings.keys()}
-    local["settings"] = local_settings
+          local_settings = local.get("settings", {})
+          remote_settings = remote.get("settings", {})
+          if isinstance(local_settings, dict) and isinstance(remote_settings, dict):
+              remote["settings"] = {k: remote_settings.get(k) for k in local_settings.keys()}
+              local["settings"] = local_settings
 
-if hashlib.sha256(canonical(local)).hexdigest() != hashlib.sha256(canonical(remote)).hexdigest():
-    print(f"❌ Workflow verification failed for {label}")
-    raise SystemExit(1)
+          if hashlib.sha256(canonical(local)).hexdigest() != hashlib.sha256(canonical(remote)).hexdigest():
+              print(f"❌ Workflow verification failed for {label}")
+              raise SystemExit(1)
 
-print(f"✅ Workflow verification succeeded for {label}")
-PY
+          print(f"✅ Workflow verification succeeded for {label}")
+          PY
           }
 
           update_or_create_workflow() {
@@ -244,14 +244,14 @@ PY
                 exit 1
               fi
               workflow_id="$(python3 - "$response" "$workflow_id" <<'PY'
-import json
-import sys
-from pathlib import Path
+          import json
+          import sys
+          from pathlib import Path
 
-payload = json.loads(Path(sys.argv[1]).read_text() or "{}")
-print(payload.get("id") or sys.argv[2])
-PY
-)"
+          payload = json.loads(Path(sys.argv[1]).read_text() or "{}")
+          print(payload.get("id") or sys.argv[2])
+          PY
+              )"
               api_url="${base_api}/${workflow_id}"
               echo "✅ ${label} created (id: ${workflow_id})"
             elif [ "$status" != "200" ]; then
