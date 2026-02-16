@@ -169,22 +169,6 @@ PY
   echo "✅ weekly_metrics history seeded"
 }
 
-seed_feedback_events() {
-  echo "▶️  Seeding feedback_events history"
-  local mid now_iso recent_date stale_iso stale_date
-  mid=$("${COMPOSE_CMD[@]}" ps -q mongo)
-  [[ -n "$mid" ]] || { echo "❌ Unable to resolve mongo container id"; exit 1; }
-
-  now_iso="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-  recent_date="${now_iso%%T*}"
-  stale_iso="$(date -u -v-45d +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -d '45 days ago' +"%Y-%m-%dT%H:%M:%SZ")"
-  stale_date="${stale_iso%%T*}"
-
-  docker exec "$mid" mongosh --quiet "mongodb://localhost:27017/running_coach_itest" \
-    --eval "db.feedback_events.deleteMany({}); db.feedback_events.insertMany([{sessionKey:'itest-pain-recent-${recent_date}',sessionRef:'itest-prior-run-recent-111',runId:'itest-prior-run-recent',type:'pain',response:'pain',note:null,sessionDate:'${recent_date}',date:'${recent_date}',sessionDay:'Monday',day:'Monday',chatId:'730354404',messageId:111,userId:1,username:'itest',timestamp:'${now_iso}',receivedAt:'${now_iso}'},{sessionKey:'itest-skipped-recent-a-${recent_date}',sessionRef:'itest-prior-run-recent-113',runId:'itest-prior-run-recent',type:'skipped',response:'skipped',note:null,sessionDate:'${recent_date}',date:'${recent_date}',sessionDay:'Tuesday',day:'Tuesday',chatId:'730354404',messageId:113,userId:1,username:'itest',timestamp:'${now_iso}',receivedAt:'${now_iso}'},{sessionKey:'itest-skipped-recent-b-${recent_date}',sessionRef:'itest-prior-run-recent-114',runId:'itest-prior-run-recent',type:'skipped',response:'skipped',note:null,sessionDate:'${recent_date}',date:'${recent_date}',sessionDay:'Wednesday',day:'Wednesday',chatId:'730354404',messageId:114,userId:1,username:'itest',timestamp:'${now_iso}',receivedAt:'${now_iso}'},{sessionKey:'itest-foreign-pain-${recent_date}',sessionRef:'itest-foreign-run-211',runId:'itest-foreign-run',type:'pain',response:'pain',note:null,sessionDate:'${recent_date}',date:'${recent_date}',sessionDay:'Monday',day:'Monday',chatId:'999000111',messageId:211,userId:2,username:'other',timestamp:'${now_iso}',receivedAt:'${now_iso}'},{sessionKey:'itest-foreign-skipped-${recent_date}',sessionRef:'itest-foreign-run-212',runId:'itest-foreign-run',type:'skipped',response:'skipped',note:null,sessionDate:'${recent_date}',date:'${recent_date}',sessionDay:'Tuesday',day:'Tuesday',chatId:'999000111',messageId:212,userId:2,username:'other',timestamp:'${now_iso}',receivedAt:'${now_iso}'},{sessionKey:'itest-pain-stale-${stale_date}',sessionRef:'itest-prior-run-stale-112',runId:'itest-prior-run-stale',type:'pain',response:'pain',note:null,sessionDate:'${stale_date}',date:'${stale_date}',sessionDay:'Monday',day:'Monday',chatId:'730354404',messageId:112,userId:1,username:'itest',timestamp:'${stale_iso}',receivedAt:'${stale_iso}'}]);" >/dev/null
-  echo "✅ feedback_events history seeded"
-}
-
 patch_workflow() {
   echo "▶️  Patching workflow JSON"
   local js_mock_llm js_mock_repair_1 js_mock_repair_2 js_mock_telegram
@@ -486,7 +470,6 @@ if len(html) > max_telegram_length:
     raise SystemExit(f"❌ htmlMessage exceeds Telegram safe budget ({len(html)} > {max_telegram_length})")
 required_sections = [
     "<b>Last-week summary</b>",
-    "<b>Weekly adherence</b>",
     "<b>This-week goal</b>",
     "<b>Daily plan</b>",
     "<b>Key session</b>",
@@ -508,7 +491,7 @@ if payload.get("telegramMessageLength") != len(html):
     )
 
 completeness = payload.get("sectionCompleteness")
-required_keys = {"lastWeekSummary", "weeklyAdherence", "thisWeekGoal", "dailyPlan", "keySession", "warnings"}
+required_keys = {"lastWeekSummary", "thisWeekGoal", "dailyPlan", "keySession", "warnings"}
 if not isinstance(completeness, dict):
     raise SystemExit("❌ sectionCompleteness is missing or invalid")
 missing_keys = sorted(required_keys - set(completeness.keys()))
@@ -518,16 +501,6 @@ if missing_keys:
 missing_count = payload.get("sectionMissingCount")
 if not isinstance(missing_count, int):
     raise SystemExit("❌ sectionMissingCount is missing or invalid")
-
-weekly = payload.get("weeklyAdherenceSummary")
-if not isinstance(weekly, dict):
-    raise SystemExit("❌ weeklyAdherenceSummary is missing or invalid")
-counts = weekly.get("counts")
-if not isinstance(counts, dict):
-    raise SystemExit("❌ weeklyAdherenceSummary.counts is missing or invalid")
-for key in ("done", "skipped", "hard", "pain"):
-    if key not in counts:
-        raise SystemExit(f"❌ weeklyAdherenceSummary.counts missing key: {key}")
 
 print("✅ Telegram template includes all fixed sections and observability fields")
 PY
@@ -655,7 +628,7 @@ PY
 }
 
 verify_risk_warning_metadata() {
-  echo "▶️  Verifying pain-triggered risk warning metadata"
+  echo "▶️  Verifying risk warning metadata"
 
   python3 - "$EXECUTION_LOG" <<'PY'
 import json
@@ -700,31 +673,22 @@ if not payload:
 counts = payload.get("riskWarningTriggerCounts")
 if not isinstance(counts, dict):
     raise SystemExit("❌ riskWarningTriggerCounts missing")
-if counts.get("painReported") != 1:
-    raise SystemExit(f"❌ Expected painReported trigger count = 1, got {counts.get('painReported')!r}")
 
 triggers = payload.get("riskWarningTriggers")
-if not isinstance(triggers, list) or "painReported" not in triggers:
-    raise SystemExit("❌ painReported missing from riskWarningTriggers")
+if not isinstance(triggers, list):
+    raise SystemExit("❌ riskWarningTriggers missing")
 
-risk_feedback = payload.get("riskFeedback")
-if not isinstance(risk_feedback, dict):
-    raise SystemExit("❌ riskFeedback missing")
-if str(risk_feedback.get("chatId")) != "730354404":
-    raise SystemExit(f"❌ riskFeedback should be scoped to default athlete chat, got {risk_feedback.get('chatId')!r}")
-if risk_feedback.get("painEventCount") != 1:
-    raise SystemExit(f"❌ Expected only recent pain event count = 1, got {risk_feedback.get('painEventCount')!r}")
+if counts.get("painReported", 0) not in (0, None):
+    raise SystemExit(f"❌ painReported should be 0 without generic feedback ingestion, got {counts.get('painReported')!r}")
+if payload.get("riskFeedback") is not None:
+    raise SystemExit("❌ riskFeedback should be absent after removing generic feedback ingestion")
 
-html = str(payload.get("htmlMessage") or "")
-if ("Pain feedback reported" not in html) and ("Dolor reportado" not in html):
-    raise SystemExit("❌ Pain warning text missing in htmlMessage")
-
-print("✅ Pain-triggered risk metadata is present and time-windowed")
+print("✅ Risk warning metadata is present without generic-feedback dependency")
 PY
 }
 
-verify_feedback_adaptation_metadata() {
-  echo "▶️  Verifying feedback adaptation summary and triggers"
+verify_run_event_observability() {
+  echo "▶️  Verifying run-event observability metadata"
 
   python3 - "$EXECUTION_LOG" <<'PY'
 import json
@@ -767,49 +731,14 @@ for run in prompt_runs:
 if not prompt_payload:
     raise SystemExit("❌ Prompt Builder payload is empty")
 
-feedback = prompt_payload.get("feedbackSummary")
-if not isinstance(feedback, dict):
-    raise SystemExit("❌ feedbackSummary missing from Prompt Builder output")
-
 activities = prompt_payload.get("activities")
 wellness = prompt_payload.get("wellness")
 if not isinstance(activities, list) or len(activities) == 0:
     raise SystemExit("❌ Prompt Builder should receive non-empty activities context")
 if not isinstance(wellness, list) or len(wellness) == 0:
     raise SystemExit("❌ Prompt Builder should receive non-empty wellness context")
-
-counts = feedback.get("counts")
-if not isinstance(counts, dict):
-    raise SystemExit("❌ feedbackSummary.counts missing")
-if str(feedback.get("chatId")) != "730354404":
-    raise SystemExit(f"❌ feedbackSummary.chatId should be scoped to default athlete chat, got {feedback.get('chatId')!r}")
-if counts.get("pain") != 1:
-    raise SystemExit(f"❌ Expected recent pain count = 1, got {counts.get('pain')!r}")
-if counts.get("skipped") != 2:
-    raise SystemExit(f"❌ Expected skipped count = 2 for scoped low adherence scenario, got {counts.get('skipped')!r}")
-
-if feedback.get("hasRecentPain") is not True:
-    raise SystemExit("❌ hasRecentPain should be true")
-if feedback.get("hasLowAdherence") is not True:
-    raise SystemExit("❌ hasLowAdherence should be true when skipped sessions are high")
-
-adherence_rate = feedback.get("adherenceRate")
-skip_rate = feedback.get("skipRate")
-if adherence_rate is None or adherence_rate >= 0.6:
-    raise SystemExit(f"❌ adherenceRate should indicate low adherence, got {adherence_rate!r}")
-if skip_rate is None or skip_rate <= 0.4:
-    raise SystemExit(f"❌ skipRate should indicate low adherence, got {skip_rate!r}")
-
-triggers = feedback.get("adaptationTriggers")
-if not isinstance(triggers, list):
-    raise SystemExit("❌ adaptationTriggers missing")
-expected_triggers = {"painReported", "lowAdherence"}
-if not expected_triggers.issubset(set(triggers)):
-    raise SystemExit(f"❌ adaptationTriggers missing expected values, got {triggers!r}")
-
-reasons = feedback.get("adaptationReasons")
-if not isinstance(reasons, list) or len(reasons) < 2:
-    raise SystemExit("❌ adaptationReasons should include both pain and adherence rationale")
+if prompt_payload.get("feedbackSummary") is not None:
+    raise SystemExit("❌ feedbackSummary should not be present in Prompt Builder output")
 
 event_runs = run_data.get("Build Run Event (success)") or []
 if not event_runs:
@@ -825,20 +754,9 @@ for run in event_runs:
 if not event_payload:
     raise SystemExit("❌ Build Run Event payload is empty")
 
-if event_payload.get("feedbackAdaptationApplied") is not True:
-    raise SystemExit("❌ feedbackAdaptationApplied should be true")
-
-trigger_count = event_payload.get("adaptationTriggerCount")
-if not isinstance(trigger_count, int) or trigger_count < 2:
-    raise SystemExit(f"❌ adaptationTriggerCount should be >= 2, got {trigger_count!r}")
-
-event_triggers = event_payload.get("adaptationTriggers")
-if not isinstance(event_triggers, list) or not expected_triggers.issubset(set(event_triggers)):
-    raise SystemExit(f"❌ run event adaptationTriggers missing expected values, got {event_triggers!r}")
-
-event_feedback = event_payload.get("feedbackSummary")
-if not isinstance(event_feedback, dict) or event_feedback.get("hasLowAdherence") is not True:
-    raise SystemExit("❌ run event should persist feedbackSummary with hasLowAdherence=true")
+for removed_field in ("feedbackSummary", "feedbackAdaptationApplied", "adaptationTriggers", "adaptationTriggerCount"):
+    if event_payload.get(removed_field) is not None:
+        raise SystemExit(f"❌ {removed_field} should be absent after removing generic feedback adaptation")
 
 structured_logs = event_payload.get("structuredLogs")
 if not isinstance(structured_logs, list) or len(structured_logs) < 2:
@@ -997,7 +915,7 @@ if failure_runs:
         if not isinstance(failure_core_metrics.get("invalidJsonRate"), (int, float)):
             raise SystemExit("❌ failure coreMetrics.invalidJsonRate should be numeric")
 
-print("✅ Feedback adaptation summary and triggers are correct")
+print("✅ Run-event observability metadata is correct")
 PY
 }
 
@@ -1291,7 +1209,6 @@ CID=$("${COMPOSE_CMD[@]}" ps -q n8n)
 
 seed_credentials
 seed_weekly_metrics_history
-seed_feedback_events
 patch_workflow
 
 docker cp "$PATCHED_JSON" "$CID:/home/node/itest.workflow.json"
@@ -1333,7 +1250,7 @@ verify_telegram_template
 verify_why_this_plan
 verify_preview_mode_metadata
 verify_risk_warning_metadata
-verify_feedback_adaptation_metadata
+verify_run_event_observability
 verify_reminder_delivery_and_metrics "$EXECUTION_LOG"
 
 echo "▶️  Executing workflow (reminder dedupe check)"

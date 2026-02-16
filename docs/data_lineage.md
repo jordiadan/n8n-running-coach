@@ -37,8 +37,9 @@ Written by:
 - Workflow: `workflows/running_coach_feedback_workflow.json`
 
 Fields (top-level):
-- `sessionKey` (string, unique): `${runId}-${messageId|sessionDate}-${userId|anon}` for idempotency.
-- `sessionRef` (string): `${runId}-${messageId|sessionDate}` reference for a prompted session.
+- `sessionId` (string): session identifier encoded in callback payload (`session_feedback|runId|sessionId|type`).
+- `sessionKey` (string, unique): `${runId}-${sessionId}-${userId|anon}` for idempotency.
+- `sessionRef` (string): `${runId}-${sessionId}` reference for a prompted session.
 - `runId` (string): links feedback to the originating plan run.
 - `type` (string): `done`, `skipped`, `hard`, or `pain`.
 - `response` (string): backward-compatible alias of `type`.

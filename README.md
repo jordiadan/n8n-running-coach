@@ -13,7 +13,7 @@ This project collects training and wellness data, computes weekly load/recovery 
 - Builds a structured coaching prompt for OpenAI.
 - Requests a weekly plan as strict JSON output.
 - Formats that output as an HTML message and sends it to Telegram.
-- Parses Telegram feedback callbacks (done/skipped/hard/pain) for future adaptation via a dedicated async workflow.
+- Uses a dedicated async workflow for session-level Telegram feedback callbacks (`session_feedback|runId|sessionId|type`).
 - Supports optional daily reminders tied to the planned session of the day.
 - Supports both manual execution and scheduled execution in n8n.
 
@@ -21,7 +21,7 @@ This project collects training and wellness data, computes weekly load/recovery 
 
 Main workflow files:
 - `workflows/running_coach_workflow.json` (weekly planning + delivery)
-- `workflows/running_coach_feedback_workflow.json` (Telegram callback ingestion)
+- `workflows/running_coach_feedback_workflow.json` (session feedback callback ingestion)
 
 1. Trigger:
    - Manual trigger (`When clicking 'Execute workflow'`)
@@ -59,7 +59,7 @@ Main workflow files:
 ## Repository Layout
 
 - `workflows/running_coach_workflow.json`: n8n workflow definition.
-- `workflows/running_coach_feedback_workflow.json`: n8n workflow for Telegram feedback ingestion.
+- `workflows/running_coach_feedback_workflow.json`: n8n workflow for session-feedback ingestion.
 - `tests/run-it.sh`: full integration test runner.
 - `tests/mockserver-expectations.json`: mocked API payloads for tests.
 - `tests/credentials/mongo.json`: n8n credential fixture for Mongo tests.
@@ -120,7 +120,7 @@ What the integration test does:
 - Executes it via n8n CLI.
 - Verifies that all workflow nodes are executed at least once
   (except schedule trigger, which is intentionally skipped).
-- `tests/run-feedback-it.sh` validates Telegram callback parsing, late-feedback gating, and `feedback_events` persistence in the dedicated feedback workflow.
+- `tests/run-feedback-it.sh` validates session callback parsing, late-feedback gating, and `feedback_events` persistence in the dedicated feedback workflow.
 
 ## Schema Validation
 
@@ -217,7 +217,7 @@ For complete rules, see:
 - Success events also persist Telegram template metadata (`telegramTemplateVersion`, `sectionCompleteness`, `sectionMissingCount`).
 - Telegram rationale telemetry is stored per run (`whyThisPlan`, `whyPlanMetricKeys`, `whyPlanHallucinationFailures`).
 - Success events also store preview routing metadata (`previewMode`, `previewChatId`).
-- Success events also persist risk-warning metadata (`riskWarningTriggerCount`, `riskWarningTriggers`, `riskWarningTriggerCounts`, `riskFeedback`).
+- Success events also persist risk-warning metadata (`riskWarningTriggerCount`, `riskWarningTriggers`, `riskWarningTriggerCounts`).
 - Feedback replies are persisted in `feedback_events` for compliance and recovery signals.
 - Reminder executions are persisted in `reminder_events` and `run_events` with `reminder_sent_count` and `reminder_opt_in_users_count`.
 - Validation failures send a Telegram alert before the workflow throws the fallback error.

@@ -118,10 +118,11 @@ patch_workflow() {
 const daysOld = __DAYS_OLD__;
 const nowMs = Date.now() - (daysOld * 86400000);
 const runId = `itest-run-feedback-${daysOld}`;
+const sessionId = `session-${daysOld}-wed-vo2`;
 return [{
   json: {
     callback_query: {
-      data: `feedback|${runId}|done`,
+      data: `session_feedback|${runId}|${sessionId}|done`,
       from: { id: 1, username: "itest" },
       message: {
         message_id: 12345 + daysOld,
@@ -255,6 +256,8 @@ session_key = str(payload.get("sessionKey", "")).strip()
 run_id = str(payload.get("runId", "")).strip()
 if not session_key or not run_id:
     raise SystemExit("❌ sessionKey/runId missing in Parse Feedback payload")
+if not str(payload.get("sessionId", "")).strip():
+    raise SystemExit("❌ sessionId missing in Parse Feedback payload")
 
 print(session_key, run_id)
 PY
