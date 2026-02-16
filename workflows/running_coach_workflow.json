@@ -1274,11 +1274,6 @@
             "index": 0
           },
           {
-            "node": "Build Feedback Prompt",
-            "type": "main",
-            "index": 0
-          },
-          {
             "node": "Run Events DB (success)",
             "type": "main",
             "index": 0
