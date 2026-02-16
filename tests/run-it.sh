@@ -193,6 +193,9 @@ patch_workflow() {
 
   js_mock_repair_2=$'return [{\n  json: {\n    schema_version: "1.0",\n    activityPlan: {\n      nextWeek: {\n        phase: "Desarrollo",\n        objective: "Consolidar base aerobica",\n        weekStart: "2025-10-13",\n        weekEnd: "2025-10-19"\n      },\n      days: [\n        { day: "Lunes", date: "2025-10-13", activity: "Easy run", distance_time: "40 min", intensity: "Z2 (118-138 bpm)", goal: "Recuperacion", note: "Movilidad + foam roller" },\n        { day: "Martes", date: "2025-10-14", activity: "Gimnasio", distance_time: "60 min", intensity: "-", goal: "Fuerza (Pecho y brazos)" },\n        { day: "Miercoles", date: "2025-10-15", activity: "VO2 max", distance_time: "4x3 min", intensity: "Z4-Z5 (168-188 bpm)", goal: "Potencia aerobica" },\n        { day: "Jueves", date: "2025-10-16", activity: "Gimnasio", distance_time: "60 min", intensity: "-", goal: "Fuerza (Espalda y hombros)" },\n        { day: "Viernes", date: "2025-10-17", activity: "Tempo / Umbral", distance_time: "30 min", intensity: "Z3-Z4 (155-174 bpm)", goal: "Tolerancia lactato" },\n        { day: "Sabado", date: "2025-10-18", activity: "Gimnasio", distance_time: "60 min", intensity: "-", goal: "Fuerza (Piernas)" },\n        { day: "Domingo", date: "2025-10-19", activity: "Long run", distance_time: "75 min", intensity: "Z2 (118-138 bpm)", goal: "Base aerobica progresiva", note: "Ultimos 10 min a Z3" }\n      ]\n    },\n    justification: [\n      "Carga coherente con ATL y HRV recientes",\n      "VO2 y tempo separados por >=48h",\n      "Long run progresivo para consolidar CTL"\n    ]\n  }\n}];'
 
+  # Single-attempt flow: mock a valid plan directly from the first LLM call.
+  js_mock_llm="$js_mock_repair_2"
+
   js_mock_telegram=$'return [{\n  json: {\n    ok: true,\n    result: {\n      message_id: 12345,\n      chat: { id: 987654, username: "itest" },\n      date: Math.floor(Date.now() / 1000),\n      text: "Test Telegram message"\n    }\n  }\n}];'
 
   js_mock_feedback_trigger=$'const runId = items[0].json.runId || "itest-run";\nreturn [{\n  json: {\n    callback_query: {\n      data: `feedback|${runId}|done`,\n      from: { id: 1, username: "itest" },\n      message: {\n        message_id: 12345,\n        chat: { id: 987654, username: "itest" },\n        date: Math.floor(Date.now() / 1000)\n      }\n    }\n  }\n}];'
@@ -256,14 +259,6 @@ patch_workflow() {
       end
     )
     | .connections["Is WeeklyPlan valid? (attempt 0)"].main = [
-        [{ "node": "Build Repair Prompt (attempt 1)", "type": "main", "index": 0 }],
-        [{ "node": "Build Repair Prompt (attempt 1)", "type": "main", "index": 0 }]
-      ]
-    | .connections["Is WeeklyPlan valid? (attempt 1)"].main = [
-        [{ "node": "Build Repair Prompt (attempt 2)", "type": "main", "index": 0 }],
-        [{ "node": "Build Repair Prompt (attempt 2)", "type": "main", "index": 0 }]
-      ]
-    | .connections["Is WeeklyPlan valid? (attempt 2)"].main = [
         [{ "node": "Build Run Event (success)", "type": "main", "index": 0 }],
         [{ "node": "Build Run Event (success)", "type": "main", "index": 0 }]
       ]
@@ -424,8 +419,6 @@ if candidate is None:
 data_root = candidate.get("data", candidate)
 run_data = data_root.get("resultData", {}).get("runData", {})
 node_names = [
-    "Validate WeeklyPlan (attempt 2)",
-    "Validate WeeklyPlan (attempt 1)",
     "Validate WeeklyPlan (attempt 0)",
 ]
 
@@ -929,8 +922,6 @@ if not isinstance(core_metrics.get("latencyMs"), (int, float)) or core_metrics.g
 event_run_id = event_payload.get("runId")
 validate_nodes = [
     "Validate WeeklyPlan (attempt 0)",
-    "Validate WeeklyPlan (attempt 1)",
-    "Validate WeeklyPlan (attempt 2)",
 ]
 attempt_payloads = []
 for node_name in validate_nodes:
