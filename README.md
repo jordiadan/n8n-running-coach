@@ -7,6 +7,7 @@ This project collects training and wellness data, computes weekly load/recovery 
 ## What This Project Does
 
 - Pulls athlete data from Intervals.icu (`activities` + `wellness` endpoints).
+- Pulls heart-rate profile data from Intervals.icu and auto-syncs HR zones.
 - Normalizes and stores data in MongoDB collections.
 - Computes weekly metrics (training load, recovery, volume, session mix).
 - Merges current week context with recent historical weeks.
@@ -29,6 +30,7 @@ Main workflow files:
 2. Data ingestion:
    - `GET Activities` from Intervals.icu
    - `GET Wellness` from Intervals.icu
+   - `GET HR Parameters` + `Sync HR Zones` (auto-sync `hrMax`/`hrRest`/`lthr` and zones)
 3. Data shaping + persistence:
    - `Shape Activities` -> Mongo `activities` (upsert)
    - `Shape Wellness` -> Mongo `wellness` (upsert)
@@ -37,6 +39,8 @@ Main workflow files:
    - `Shape Weekly Metrics` -> Mongo `weekly_metrics` (upsert by `weekStart`)
    - `Read Previous Weeks` -> fetch historical weekly records
    - `Merge Current & History` + `Map Current + History`
+   - `Read Last HR Profile` -> last persisted HR profile
+   - `HR Profiles DB` -> upsert last-known HR profile/zones when valid
 5. Prompt + inference:
    - `Prompt Builder` -> builds structured system prompt + context
    - `Message a model` -> OpenAI (configured as `gpt-5` in workflow)
@@ -143,6 +147,7 @@ Triggers:
 Actions:
 
 - Installs test dependencies (including `sqlite3`)
+- Runs schema + HR-zone unit tests
 - Runs `bash tests/run-it.sh`
 - Uploads `.tmp` artifacts on failure
 
@@ -218,6 +223,7 @@ For complete rules, see:
 - Telegram rationale telemetry is stored per run (`whyThisPlan`, `whyPlanMetricKeys`, `whyPlanHallucinationFailures`).
 - Success events also store preview routing metadata (`previewMode`, `previewChatId`).
 - Success events also persist risk-warning metadata (`riskWarningTriggerCount`, `riskWarningTriggers`, `riskWarningTriggerCounts`).
+- Success events include `heartRateSync` structured fields (`hrMax_old/new`, `hrRest_old/new`, `lthr_old/new`, `zonesUpdated`).
 - Feedback replies are persisted in `feedback_events` for compliance and recovery signals.
 - Reminder executions are persisted in `reminder_events` and `run_events` with `reminder_sent_count` and `reminder_opt_in_users_count`.
 - Validation failures send a Telegram alert before the workflow throws the fallback error.
