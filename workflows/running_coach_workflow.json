@@ -68,7 +68,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "={{ $env.INTERVALS_AUTH_HEADER || $vars.INTERVALS_AUTH_HEADER }}"
+              "value": "={{ $env.INTERVALS_AUTH_HEADER || $env.INTERVALS_ICU_BASIC_AUTH || $vars.INTERVALS_AUTH_HEADER || $vars.INTERVALS_ICU_BASIC_AUTH }}"
             }
           ]
         },
@@ -109,7 +109,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "={{ $env.INTERVALS_AUTH_HEADER || $vars.INTERVALS_AUTH_HEADER }}"
+              "value": "={{ $env.INTERVALS_AUTH_HEADER || $env.INTERVALS_ICU_BASIC_AUTH || $vars.INTERVALS_AUTH_HEADER || $vars.INTERVALS_ICU_BASIC_AUTH }}"
             }
           ]
         },
@@ -887,7 +887,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "={{ $env.INTERVALS_AUTH_HEADER || $vars.INTERVALS_AUTH_HEADER }}"
+              "value": "={{ $env.INTERVALS_AUTH_HEADER || $env.INTERVALS_ICU_BASIC_AUTH || $vars.INTERVALS_AUTH_HEADER || $vars.INTERVALS_ICU_BASIC_AUTH }}"
             }
           ]
         },

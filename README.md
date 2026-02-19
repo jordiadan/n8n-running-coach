@@ -212,6 +212,7 @@ For complete rules, see:
 - Set `RC_TELEGRAM_PREVIEW_MODE=true` (or n8n variable) to route outgoing Telegram messages to preview mode.
 - Set `RC_TELEGRAM_PREVIEW_CHAT_ID=<chat_id>` when preview mode is enabled (required safety guard).
 - Set `INTERVALS_AUTH_HEADER='Basic <base64(API_KEY:API_KEY)>'` so all Intervals.icu HTTP nodes can authenticate.
+- Backward-compatible alias: `INTERVALS_ICU_BASIC_AUTH` is still accepted as fallback.
 - Set `RC_REMINDER_ENABLED=true` to opt in to daily reminders.
 - Set `RC_REMINDER_TIME=<HH:MM>` (24-hour) to choose the reminder time.
 - Set `RC_REMINDER_TIMEZONE=<IANA timezone>` (default `Europe/Madrid`) for reminder time evaluation.
