@@ -63,15 +63,7 @@
             }
           ]
         },
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Authorization",
-              "value": "={{ ($env.INTERVALS_ICU_BASIC_AUTH || '').trim() }}"
-            }
-          ]
-        },
+        "sendHeaders": false,
         "options": {
           "redirect": {
             "redirect": {}
@@ -81,7 +73,9 @@
               "responseFormat": "json"
             }
           }
-        }
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth"
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -90,7 +84,13 @@
         544
       ],
       "id": "43f25252-a6d2-4350-9005-faef42df185c",
-      "name": "GET Wellness"
+      "name": "GET Wellness",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "wkFXdQK5aocqEcyf",
+          "name": "Intervals.icu Basic Auth"
+        }
+      }
     },
     {
       "parameters": {
@@ -104,15 +104,7 @@
             }
           ]
         },
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Authorization",
-              "value": "={{ ($env.INTERVALS_ICU_BASIC_AUTH || '').trim() }}"
-            }
-          ]
-        },
+        "sendHeaders": false,
         "options": {
           "redirect": {
             "redirect": {}
@@ -122,7 +114,9 @@
               "responseFormat": "json"
             }
           }
-        }
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth"
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -131,7 +125,13 @@
         352
       ],
       "id": "14d91aca-0f01-43a4-be95-8852730b31fe",
-      "name": "GET Activities"
+      "name": "GET Activities",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "wkFXdQK5aocqEcyf",
+          "name": "Intervals.icu Basic Auth"
+        }
+      }
     },
     {
       "parameters": {
@@ -882,15 +882,7 @@
     {
       "parameters": {
         "url": "https://intervals.icu/api/v1/athlete/i372001",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Authorization",
-              "value": "={{ ($env.INTERVALS_ICU_BASIC_AUTH || '').trim() }}"
-            }
-          ]
-        },
+        "sendHeaders": false,
         "options": {
           "redirect": {
             "redirect": {}
@@ -900,7 +892,9 @@
               "responseFormat": "json"
             }
           }
-        }
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth"
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -911,7 +905,13 @@
       "id": "c178495c-9a48-480d-9f5b-6c96be636bbd",
       "name": "GET HR Parameters",
       "onError": "continueRegularOutput",
-      "alwaysOutputData": true
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "wkFXdQK5aocqEcyf",
+          "name": "Intervals.icu Basic Auth"
+        }
+      }
     },
     {
       "parameters": {

@@ -188,16 +188,25 @@ patch_workflow() {
     .nodes |= map(
       if .name == "GET Activities" then
         .parameters.url = $mockUrl + "/api/v1/athlete/i372001/activities"
+        | .parameters.authentication = "none"
+        | del(.parameters.genericAuthType)
         | .parameters.sendHeaders = false
         | .parameters.headerParameters.parameters = []
+        | del(.credentials)
       elif .name == "GET Wellness" then
         .parameters.url = $mockUrl + "/api/v1/athlete/i372001/wellness"
+        | .parameters.authentication = "none"
+        | del(.parameters.genericAuthType)
         | .parameters.sendHeaders = false
         | .parameters.headerParameters.parameters = []
+        | del(.credentials)
       elif .name == "GET HR Parameters" then
         .parameters.url = $mockUrl + "/api/v1/athlete/i372001"
+        | .parameters.authentication = "none"
+        | del(.parameters.genericAuthType)
         | .parameters.sendHeaders = false
         | .parameters.headerParameters.parameters = []
+        | del(.credentials)
       elif .name == "Message a model" then
         .type = "n8n-nodes-base.code"
         | .typeVersion = 2

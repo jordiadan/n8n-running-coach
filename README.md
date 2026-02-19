@@ -211,7 +211,8 @@ For complete rules, see:
 - For production, ensure DB config and credentials are aligned with your actual infrastructure.
 - Set `RC_TELEGRAM_PREVIEW_MODE=true` (or n8n variable) to route outgoing Telegram messages to preview mode.
 - Set `RC_TELEGRAM_PREVIEW_CHAT_ID=<chat_id>` when preview mode is enabled (required safety guard).
-- Set `INTERVALS_ICU_BASIC_AUTH='Basic <base64(API_KEY:API_KEY)>'` as the single Intervals.icu auth secret in production.
+- Configure n8n credential `Intervals.icu Basic Auth` (`HTTP Request` -> `Basic Auth`) and use it in Intervals nodes.
+- For that credential use `Username=API_KEY` and `Password=<your Intervals API key>`.
 - Set `RC_REMINDER_ENABLED=true` to opt in to daily reminders.
 - Set `RC_REMINDER_TIME=<HH:MM>` (24-hour) to choose the reminder time.
 - Set `RC_REMINDER_TIMEZONE=<IANA timezone>` (default `Europe/Madrid`) for reminder time evaluation.
