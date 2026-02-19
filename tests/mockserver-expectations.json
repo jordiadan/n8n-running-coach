@@ -247,5 +247,39 @@
         ]
       }
     }
+  },
+  {
+    "httpRequest": {
+      "method": "GET",
+      "path": "/api/v1/athlete/i372001"
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "headers": [
+        {
+          "name": "Content-Type",
+          "values": [
+            "application/json"
+          ]
+        }
+      ],
+      "body": {
+        "type": "JSON",
+        "json": {
+          "id": 372001,
+          "hrMax": 190,
+          "hrRest": 50,
+          "lthr": 176,
+          "zoneMethod": "intervals",
+          "computedZones": {
+            "z1": { "min": 120, "max": 133 },
+            "z2": { "min": 134, "max": 147 },
+            "z3": { "min": 148, "max": 161 },
+            "z4": { "min": 162, "max": 175 },
+            "z5": { "min": 176, "max": 190 }
+          }
+        }
+      }
+    }
   }
 ]

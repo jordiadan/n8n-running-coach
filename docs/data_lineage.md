@@ -21,6 +21,7 @@ Fields (top-level):
 - `errorCount` (number): number of validation errors.
 - `errors` (array): validation error list.
 - `createdAt` (string): ISO timestamp.
+- `heartRateSync` (object | null): HR sync observability payload (`run_id`, old/new HR fields, `zonesUpdated`).
 
 Nested fields:
 - `runEvent` (object): a copy of the run event payload for reference.
@@ -76,6 +77,21 @@ Key fields:
 - `ctlMean`, `atlMean`, `rampRateMean`
 - `restHrMean`, `stepsMean`, `sleepScoreMean`, `hrvMean`
 - `createdAt`, `updatedAt`
+
+### hr_zone_profiles
+
+Purpose: persist the latest valid heart-rate parameters and zone model used by weekly planning.
+
+Written by:
+- `Sync HR Zones` + `HR Profiles DB` (MongoDB node).
+
+Key fields:
+- `athleteId`
+- `hrMax`, `hrRest`, `lthr`
+- `zoneMethod` (e.g. `intervals`, `%HRR`)
+- `computedZones` (`z1..z5` min/max bpm)
+- `zonesUpdated` (boolean for latest sync)
+- `updatedAt`
 
 ### plan_snapshots
 
@@ -141,6 +157,10 @@ Recommended indexes for `feedback_events`:
 Recommended indexes for `weekly_metrics`:
 - Unique: `{ weekStart: 1 }` (single-athlete assumption)
 - Time-based lookup: `{ createdAt: -1 }`
+
+Recommended indexes for `hr_zone_profiles`:
+- Unique: `{ athleteId: 1 }`
+- Time-based lookup: `{ updatedAt: -1 }`
 
 Recommended indexes for `plan_snapshots`:
 - Unique: `{ runId: 1 }`
