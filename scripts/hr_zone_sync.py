@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict
+from typing import Any, Dict
 
 
 ZONE_BANDS = {
@@ -18,6 +18,62 @@ class HrFields:
     hr_max: int | None
     hr_rest: int | None
     lthr: int | None
+
+
+def _to_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        parsed = int(round(float(value)))
+    except (TypeError, ValueError):
+        return None
+    return parsed
+
+
+def extract_hr_fields_from_athlete_payload(
+    payload: Any,
+    wellness_resting_hr: int | float | None = None,
+) -> HrFields:
+    candidates: list[dict[str, Any]] = []
+    if isinstance(payload, dict):
+        candidates = [payload]
+    elif isinstance(payload, list):
+        candidates = [item for item in payload if isinstance(item, dict)]
+
+    run_sport: dict[str, Any] | None = None
+    athlete_resting_hr: int | None = None
+
+    for candidate in candidates:
+        if athlete_resting_hr is None:
+            athlete_resting_hr = _to_int(
+                candidate.get("icu_resting_hr")
+                or candidate.get("restingHR")
+                or candidate.get("restingHr")
+                or candidate.get("hrRest")
+            )
+
+        sport_settings = candidate.get("sportSettings")
+        if not isinstance(sport_settings, list):
+            continue
+
+        for sport in sport_settings:
+            if not isinstance(sport, dict):
+                continue
+            sport_types = sport.get("types")
+            if isinstance(sport_types, list) and any(
+                isinstance(value, str) and "run" in value.lower()
+                for value in sport_types
+            ):
+                run_sport = sport
+                break
+        if run_sport is not None:
+            break
+
+    hr_max = _to_int(run_sport.get("max_hr")) if run_sport else None
+    lthr = _to_int(run_sport.get("lthr")) if run_sport else None
+    hr_rest = athlete_resting_hr if athlete_resting_hr is not None else _to_int(wellness_resting_hr)
+
+    return HrFields(hr_max=hr_max, hr_rest=hr_rest, lthr=lthr)
 
 
 def validate_hr_fields(fields: HrFields) -> list[str]:
@@ -48,4 +104,3 @@ def diff_hr_fields(old: HrFields, new: HrFields) -> bool:
         or old.hr_rest != new.hr_rest
         or old.lthr != new.lthr
     )
-
