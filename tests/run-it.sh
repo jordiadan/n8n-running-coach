@@ -194,6 +194,10 @@ patch_workflow() {
         .parameters.url = $mockUrl + "/api/v1/athlete/i372001/wellness"
         | .parameters.sendHeaders = false
         | .parameters.headerParameters.parameters = []
+      elif .name == "GET HR Parameters" then
+        .parameters.url = $mockUrl + "/api/v1/athlete/i372001"
+        | .parameters.sendHeaders = false
+        | .parameters.headerParameters.parameters = []
       elif .name == "Message a model" then
         .type = "n8n-nodes-base.code"
         | .typeVersion = 2
@@ -480,7 +484,7 @@ if missing:
     raise SystemExit("❌ Missing fixed Telegram sections: " + ", ".join(missing))
 
 template_version = payload.get("telegramTemplateVersion")
-if template_version != "telegram-v2.1":
+if template_version != "telegram-v2.2":
     raise SystemExit(f"❌ Unexpected telegramTemplateVersion: {template_version!r}")
 
 if payload.get("telegramMessageBudget") != 3900:
@@ -501,6 +505,11 @@ if missing_keys:
 missing_count = payload.get("sectionMissingCount")
 if not isinstance(missing_count, int):
     raise SystemExit("❌ sectionMissingCount is missing or invalid")
+
+hr_sync = payload.get("heartRateSync")
+if isinstance(hr_sync, dict) and hr_sync.get("zonesUpdated"):
+    if "🛠️ Zonas actualizadas:" not in html:
+        raise SystemExit("❌ Missing zones-updated notice in Telegram message when zonesUpdated=true")
 
 print("✅ Telegram template includes all fixed sections and observability fields")
 PY
@@ -740,6 +749,20 @@ if not isinstance(wellness, list) or len(wellness) == 0:
 if prompt_payload.get("feedbackSummary") is not None:
     raise SystemExit("❌ feedbackSummary should not be present in Prompt Builder output")
 
+heart_rate = prompt_payload.get("heartRate")
+if not isinstance(heart_rate, dict):
+    raise SystemExit("❌ Prompt Builder should include heartRate sync payload")
+for key in ("hrMax", "hrRest", "zoneMethod", "computedZones", "zonesUpdated", "hrSyncLog"):
+    if key not in heart_rate:
+        raise SystemExit(f"❌ heartRate payload missing key: {key}")
+zones = heart_rate.get("computedZones")
+if not isinstance(zones, dict):
+    raise SystemExit("❌ heartRate.computedZones should be an object")
+for zone in ("z1", "z2", "z3", "z4", "z5"):
+    z = zones.get(zone)
+    if not isinstance(z, dict) or "min" not in z or "max" not in z:
+        raise SystemExit(f"❌ heartRate.computedZones missing {zone} min/max")
+
 event_runs = run_data.get("Build Run Event (success)") or []
 if not event_runs:
     raise SystemExit("❌ Build Run Event (success) output not found")
@@ -757,6 +780,17 @@ if not event_payload:
 for removed_field in ("feedbackSummary", "feedbackAdaptationApplied", "adaptationTriggers", "adaptationTriggerCount"):
     if event_payload.get(removed_field) is not None:
         raise SystemExit(f"❌ {removed_field} should be absent after removing generic feedback adaptation")
+
+hr_sync_event = event_payload.get("heartRateSync")
+if not isinstance(hr_sync_event, dict):
+    raise SystemExit("❌ Build Run Event should include heartRateSync log")
+for key in ("run_id", "hrMax_old", "hrMax_new", "hrRest_old", "hrRest_new", "lthr_old", "lthr_new", "zonesUpdated"):
+    if key not in hr_sync_event:
+        raise SystemExit(f"❌ heartRateSync missing key: {key}")
+if str(hr_sync_event.get("run_id")) != str(event_payload.get("runId")):
+    raise SystemExit("❌ heartRateSync.run_id must match runId")
+if not isinstance(hr_sync_event.get("zonesUpdated"), bool):
+    raise SystemExit("❌ heartRateSync.zonesUpdated must be boolean")
 
 structured_logs = event_payload.get("structuredLogs")
 if not isinstance(structured_logs, list) or len(structured_logs) < 2:
