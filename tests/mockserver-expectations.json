@@ -266,18 +266,67 @@
       "body": {
         "type": "JSON",
         "json": {
-          "id": 372001,
-          "hrMax": 190,
-          "hrRest": 50,
-          "lthr": 176,
-          "zoneMethod": "intervals",
-          "computedZones": {
-            "z1": { "min": 120, "max": 133 },
-            "z2": { "min": 134, "max": 147 },
-            "z3": { "min": 148, "max": 161 },
-            "z4": { "min": 162, "max": 175 },
-            "z5": { "min": 176, "max": 190 }
-          }
+          "id": "i372001",
+          "icu_resting_hr": 58,
+          "sportSettings": [
+            {
+              "id": 1559634,
+              "types": [
+                "Ride",
+                "VirtualRide"
+              ],
+              "lthr": 183,
+              "max_hr": 202,
+              "hr_zones": [
+                147,
+                163,
+                171,
+                182,
+                187,
+                192,
+                202
+              ],
+              "hr_zone_names": [
+                "Recovery",
+                "Aerobic",
+                "Tempo",
+                "SubThreshold",
+                "SuperThreshold",
+                "Aerobic Capacity",
+                "Anaerobic"
+              ],
+              "updated": "2026-02-19T16:19:07.749+00:00"
+            },
+            {
+              "id": 1559635,
+              "types": [
+                "Run",
+                "VirtualRun",
+                "TrailRun"
+              ],
+              "lthr": 183,
+              "max_hr": 202,
+              "hr_zones": [
+                154,
+                163,
+                172,
+                182,
+                187,
+                192,
+                202
+              ],
+              "hr_zone_names": [
+                "Recovery",
+                "Aerobic",
+                "Tempo",
+                "SubThreshold",
+                "SuperThreshold",
+                "Aerobic Capacity",
+                "Anaerobic"
+              ],
+              "updated": "2026-02-19T16:19:07.749+00:00"
+            }
+          ]
         }
       }
     }
