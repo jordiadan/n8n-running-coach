@@ -7,7 +7,7 @@ This project collects training and wellness data, computes weekly load/recovery 
 ## What This Project Does
 
 - Pulls athlete data from Intervals.icu (`activities` + `wellness` endpoints).
-- Pulls heart-rate profile data from Intervals.icu and auto-syncs HR zones.
+- Pulls heart-rate profile data from Intervals.icu (`sportSettings` + `icu_resting_hr`) and auto-syncs HR zones.
 - Normalizes and stores data in MongoDB collections.
 - Computes weekly metrics (training load, recovery, volume, session mix).
 - Merges current week context with recent historical weeks.
@@ -30,7 +30,7 @@ Main workflow files:
 2. Data ingestion:
    - `GET Activities` from Intervals.icu
    - `GET Wellness` from Intervals.icu
-   - `GET HR Parameters` + `Sync HR Zones` (auto-sync `hrMax`/`hrRest`/`lthr` and zones)
+   - `GET HR Parameters` + `Sync HR Zones` (derive `hrMax`/`lthr` from Run `sportSettings`, `hrRest` from `icu_resting_hr`; compute `zoneMethod=%HRR` zones z1..z5)
 3. Data shaping + persistence:
    - `Shape Activities` -> Mongo `activities` (upsert)
    - `Shape Wellness` -> Mongo `wellness` (upsert)

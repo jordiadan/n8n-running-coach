@@ -88,7 +88,7 @@ Written by:
 Key fields:
 - `athleteId`
 - `hrMax`, `hrRest`, `lthr`
-- `zoneMethod` (e.g. `intervals`, `%HRR`)
+- `zoneMethod` (`%HRR`)
 - `computedZones` (`z1..z5` min/max bpm)
 - `zonesUpdated` (boolean for latest sync)
 - `updatedAt`
