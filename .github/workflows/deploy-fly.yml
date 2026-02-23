@@ -199,11 +199,55 @@ jobs:
           PY
           }
 
+          resolve_workflow_id_by_name() {
+            local workflow_name=$1
+            local list_response="/tmp/workflows.list.json"
+            local list_status=""
+
+            list_status=$(curl -s -o "$list_response" -w "%{http_code}" \
+              -H "X-N8N-API-KEY: $N8N_API_KEY" \
+              "$base_api?limit=250" || true)
+
+            if [ "$list_status" != "200" ]; then
+              return 1
+            fi
+
+            python3 - "$list_response" "$workflow_name" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text() or "{}")
+          workflow_name = sys.argv[2]
+
+          if isinstance(payload, dict):
+              workflows = payload.get("data")
+          elif isinstance(payload, list):
+              workflows = payload
+          else:
+              workflows = None
+
+          if not isinstance(workflows, list):
+              raise SystemExit(1)
+
+          matches = [
+              item for item in workflows
+              if isinstance(item, dict) and item.get("name") == workflow_name and item.get("id")
+          ]
+          if not matches:
+              raise SystemExit(1)
+
+          matches.sort(key=lambda item: item.get("updatedAt") or item.get("createdAt") or "", reverse=True)
+          print(matches[0]["id"])
+          PY
+          }
+
           update_or_create_workflow() {
             local src=$1
             local workflow_id=$2
             local allow_create=$3
             local label=$4
+            local workflow_name=$5
             local payload="/tmp/${label}.update.json"
             local remote="/tmp/${label}.remote.json"
             local response="/tmp/${label}.response.json"
@@ -229,6 +273,21 @@ jobs:
               echo "⏳ ${label} update attempt $attempt failed (status: $status); retrying in 6s..."
               sleep 6
             done
+
+            if [ "$status" = "404" ] && [ "$allow_create" = "1" ]; then
+              existing_id="$(resolve_workflow_id_by_name "$workflow_name" || true)"
+              if [ -n "${existing_id:-}" ]; then
+                workflow_id="$existing_id"
+                api_url="${base_api}/${workflow_id}"
+                echo "ℹ️  ${label} found existing workflow by name (id: ${workflow_id}); retrying update"
+                status=$(curl -s -o "$response" -w "%{http_code}" \
+                  -X PUT \
+                  -H "X-N8N-API-KEY: $N8N_API_KEY" \
+                  -H "Content-Type: application/json" \
+                  --data-binary @"$payload" \
+                  "$api_url" || true)
+              fi
+            fi
 
             if [ "$status" = "404" ] && [ "$allow_create" = "1" ]; then
               echo "ℹ️  ${label} not found; creating via POST"
@@ -272,10 +331,12 @@ jobs:
             "workflows/running_coach_workflow.json" \
             "Q9nTNHZ5vUBf58oI" \
             "0" \
-            "running_coach_main"
+            "running_coach_main" \
+            "Running Coach"
 
           update_or_create_workflow \
             "workflows/running_coach_feedback_workflow.json" \
             "running-coach-feedback-ingestion" \
             "1" \
-            "running_coach_feedback"
+            "running_coach_feedback" \
+            "Running Coach Feedback Ingestion"
