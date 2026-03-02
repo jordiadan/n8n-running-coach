@@ -92,6 +92,7 @@ The workflow includes a cron schedule expression:
 - `0 * * * * *` -> reminder trigger every minute; actual send is gated by reminder config.
 
 Production timezone is configured in Fly as `Europe/Madrid`.
+Production also prunes n8n execution history aggressively because business audit data lives in MongoDB (`run_events`, `reminder_events`, `feedback_events`) rather than in SQLite execution payload retention.
 
 ## Local Development
 
@@ -209,6 +210,11 @@ For complete rules, see:
 - The OpenAI model is configured directly in workflow node settings.
 - The Dockerfile sets `DB_TYPE=postgres`; integration tests override this to SQLite.
 - For production, ensure DB config and credentials are aligned with your actual infrastructure.
+- Fly runtime keeps only short-lived n8n execution history:
+  - success payloads are not persisted
+  - error payloads are retained for debugging
+  - manual executions are retained temporarily
+  - execution history is pruned after 72 hours or when the retained count exceeds 3000
 - Set `RC_TELEGRAM_PREVIEW_MODE=true` (or n8n variable) to route outgoing Telegram messages to preview mode.
 - Set `RC_TELEGRAM_PREVIEW_CHAT_ID=<chat_id>` when preview mode is enabled (required safety guard).
 - Configure n8n credential `Intervals.icu Basic Auth` (`HTTP Request` -> `Basic Auth`) and use it in Intervals nodes.
