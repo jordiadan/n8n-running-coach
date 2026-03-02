@@ -256,6 +256,7 @@ For complete rules, see:
 - Gym/strength work is expected on Tuesday, Thursday, and Saturday.
 - Evaluation harness checks schema + guardrails + diversity + limits on fixtures in CI.
 - Evaluation harness also validates golden weekly fixture schema and publishes dataset version/inventory in CI summary.
+- CI publishes a machine-readable quality report artifact (`quality-check-report`) with per-check status and `quality_check_failure_rate`.
 
 ## Security Considerations
 

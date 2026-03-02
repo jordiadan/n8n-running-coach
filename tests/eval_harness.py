@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 from jsonschema import Draft202012Validator, FormatChecker
@@ -167,6 +168,17 @@ def limit_checks(plan: dict) -> list[str]:
         errors.append("limits: serialized plan exceeds 3000 characters")
     return errors
 
+def format_schema_errors(errors: list) -> list[str]:
+    formatted: list[str] = []
+    for err in sorted(errors, key=lambda item: list(item.absolute_path)):
+        path = ".".join(str(part) for part in err.absolute_path) or "<root>"
+        formatted.append(f"{path}: {err.message}")
+    return formatted
+
+
+def check_status(errors: list[str]) -> str:
+    return "pass" if not errors else "fail"
+
 
 def _collect_forbidden_paths(payload: object, prefix: str = "") -> list[str]:
     matches: list[str] = []
@@ -195,11 +207,9 @@ def golden_weeks_checks() -> tuple[list[str], dict | None]:
     schema = load_json(GOLDEN_WEEKS_SCHEMA_PATH)
     dataset = load_json(GOLDEN_WEEKS_PATH)
     validator = Draft202012Validator(schema, format_checker=FormatChecker())
-    schema_errors = sorted(validator.iter_errors(dataset), key=lambda err: list(err.absolute_path))
+    schema_errors = format_schema_errors(list(validator.iter_errors(dataset)))
     if schema_errors:
-        first = schema_errors[0]
-        where = ".".join(str(part) for part in first.absolute_path) or "<root>"
-        return [f"golden_weeks: schema validation failed at {where}: {first.message}"], None
+        return [f"golden_weeks: schema validation failed: {schema_errors[0]}"], None
 
     fixtures = dataset.get("fixtures", [])
     if not isinstance(fixtures, list):
@@ -233,6 +243,7 @@ def golden_weeks_checks() -> tuple[list[str], dict | None]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--summary", help="Write markdown summary to this path.")
+    parser.add_argument("--report", help="Write machine-readable JSON report to this path.")
     args = parser.parse_args()
 
     schema = load_json(SCHEMA_PATH)
@@ -245,23 +256,59 @@ def main() -> int:
 
     failures: list[str] = []
     lengths: list[int] = []
+    fixture_reports: list[dict] = []
+    check_failures = {"schema": 0, "guardrails": 0, "diversity": 0, "limits": 0}
 
     for path in valid_paths:
         data = load_json(path)
-        errors = list(validator.iter_errors(data))
-        if errors:
-            failures.append(f"{path.name}: schema validation failed")
-            continue
+        schema_errors = format_schema_errors(list(validator.iter_errors(data)))
+        guardrail_errors = guardrail_checks(data) if not schema_errors else []
+        diversity_errors = diversity_checks(data) if not schema_errors else []
+        limit_errors = limit_checks(data) if not schema_errors else []
+        all_errors = schema_errors + guardrail_errors + diversity_errors + limit_errors
 
-        guardrail = guardrail_checks(data)
-        diversity = diversity_checks(data)
-        limits = limit_checks(data)
-        all_errors = guardrail + diversity + limits
+        if schema_errors:
+            check_failures["schema"] += 1
+        if guardrail_errors:
+            check_failures["guardrails"] += 1
+        if diversity_errors:
+            check_failures["diversity"] += 1
+        if limit_errors:
+            check_failures["limits"] += 1
+
         if all_errors:
             failures.append(f"{path.name}: " + "; ".join(all_errors))
-            continue
+        else:
+            lengths.append(len(json.dumps(data, ensure_ascii=False, separators=(",", ":"))))
 
-        lengths.append(len(json.dumps(data, ensure_ascii=False, separators=(",", ":"))))
+        fixture_reports.append(
+            {
+                "fixture": path.name,
+                "status": check_status(all_errors),
+                "checks": {
+                    "schema": {
+                        "status": check_status(schema_errors),
+                        "errorCount": len(schema_errors),
+                        "errors": schema_errors,
+                    },
+                    "guardrails": {
+                        "status": check_status(guardrail_errors),
+                        "errorCount": len(guardrail_errors),
+                        "errors": guardrail_errors,
+                    },
+                    "diversity": {
+                        "status": check_status(diversity_errors),
+                        "errorCount": len(diversity_errors),
+                        "errors": diversity_errors,
+                    },
+                    "limits": {
+                        "status": check_status(limit_errors),
+                        "errorCount": len(limit_errors),
+                        "errors": limit_errors,
+                    },
+                },
+            }
+        )
 
     golden_errors, golden_meta = golden_weeks_checks()
     failures.extend(golden_errors)
@@ -269,14 +316,21 @@ def main() -> int:
 
     weekly_fixture_total = len(valid_paths)
     total_checks = weekly_fixture_total + 1  # golden weeks dataset validation
-    passed = total_checks - len(failures)
+    failed = len(failures)
+    passed = total_checks - failed
+    quality_check_failure_rate = (failed / total_checks) if total_checks else 0.0
 
     lines = [
         "## Evaluation Harness",
         f"- Weekly plan fixtures checked: {weekly_fixture_total}",
         "- Golden weeks checks: 1",
         f"- Passed: {passed}",
-        f"- Failed: {len(failures)}",
+        f"- Failed: {failed}",
+        f"- quality_check_failure_rate: {quality_check_failure_rate:.4f}",
+        f"- Schema failures: {check_failures['schema']}",
+        f"- Guardrail failures: {check_failures['guardrails']}",
+        f"- Diversity failures: {check_failures['diversity']}",
+        f"- Limits failures: {check_failures['limits']}",
     ]
     if lengths:
         avg = sum(lengths) / len(lengths)
@@ -297,7 +351,31 @@ def main() -> int:
     if args.summary:
         Path(args.summary).write_text(summary)
 
-    return 1 if failures else 0
+    report_payload = {
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+        "summary": {
+            "weeklyFixturesChecked": weekly_fixture_total,
+            "goldenWeeksChecks": 1,
+            "checksTotal": total_checks,
+            "passed": passed,
+            "failed": failed,
+            "quality_check_failure_rate": quality_check_failure_rate,
+            "checkFailures": check_failures,
+            "goldenWeeks": {
+                "status": "pass" if golden_ok else "fail",
+                "errorCount": len(golden_errors),
+                "errors": golden_errors,
+                "metadata": golden_meta,
+            },
+        },
+        "fixtures": fixture_reports,
+    }
+    if args.report:
+        report_path = Path(args.report)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(report_payload, indent=2))
+
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
