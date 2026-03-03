@@ -50,9 +50,10 @@ services:
       DB_TYPE: sqlite
       DB_SQLITE_DATABASE: /home/node/.n8n/database.sqlite
       EXECUTIONS_MODE: regular
-      EXECUTIONS_PROCESS: main
       GENERIC_TIMEZONE: UTC
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
       NODE_FUNCTION_ALLOW_EXTERNAL: "true"
+      N8N_RUNNERS_ENABLED: "false"
       WEBHOOK_TUNNEL_URL: http://localhost:5678
       WEBHOOK_URL: http://localhost:5678
     volumes:
