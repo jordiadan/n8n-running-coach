@@ -1,0 +1,55 @@
+{
+  "name": "Running Coach :: Subflow :: Reminder Context",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -320,
+        0
+      ],
+      "id": "c2f88844-0fc4-481a-8265-7ec29a77bed8",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "const DEFAULT_CHAT_ID = '730354404';\nconst DEFAULT_REMINDER_TIME = '08:00';\nconst DEFAULT_REMINDER_TIMEZONE = 'Europe/Madrid';\n\nconst getVar = (key) => {\n  if (typeof $vars !== 'undefined' && $vars[key] != null) {\n    return String($vars[key]);\n  }\n  if (typeof $env !== 'undefined' && $env[key] != null) {\n    return String($env[key]);\n  }\n  if (typeof process !== 'undefined' && process.env && process.env[key] != null) {\n    return String(process.env[key]);\n  }\n  return '';\n};\n\nconst isTruthy = (value) => ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());\n\nconst isValidTime = (value) => /^([01]\\d|2[0-3]):([0-5]\\d)$/.test(value);\n\nconst getLocalNow = (timeZone) => {\n  const now = new Date();\n  const formatter = new Intl.DateTimeFormat('en-CA', {\n    timeZone,\n    year: 'numeric',\n    month: '2-digit',\n    day: '2-digit',\n    hour: '2-digit',\n    minute: '2-digit',\n    hour12: false,\n    weekday: 'long',\n  });\n\n  const parts = formatter.formatToParts(now).reduce((acc, part) => {\n    if (part.type !== 'literal') {\n      acc[part.type] = part.value;\n    }\n    return acc;\n  }, {});\n\n  return {\n    iso: now.toISOString(),\n    date: `${parts.year}-${parts.month}-${parts.day}`,\n    time: `${parts.hour}:${parts.minute}`,\n    weekday: parts.weekday || '',\n  };\n};\n\nconst previewEnabled = isTruthy(getVar('RC_TELEGRAM_PREVIEW_MODE'));\nconst previewChatRaw = getVar('RC_TELEGRAM_PREVIEW_CHAT_ID').trim();\nif (previewEnabled && !previewChatRaw) {\n  throw new Error('RC_TELEGRAM_PREVIEW_CHAT_ID is required when RC_TELEGRAM_PREVIEW_MODE is enabled.');\n}\n\nconst reminderEnabled = isTruthy(getVar('RC_REMINDER_ENABLED'));\nif (!reminderEnabled) {\n  return [];\n}\n\nconst reminderTime = (getVar('RC_REMINDER_TIME').trim() || DEFAULT_REMINDER_TIME);\nif (!isValidTime(reminderTime)) {\n  throw new Error('RC_REMINDER_TIME must use HH:MM (24-hour) format.');\n}\n\nconst reminderTimezone = getVar('RC_REMINDER_TIMEZONE').trim() || DEFAULT_REMINDER_TIMEZONE;\nlet localNow;\ntry {\n  localNow = getLocalNow(reminderTimezone);\n} catch (error) {\n  throw new Error(`Invalid reminder timezone: ${reminderTimezone}`);\n}\n\nconst forceSend = isTruthy(getVar('RC_REMINDER_FORCE_SEND'));\nif (!forceSend && localNow.time !== reminderTime) {\n  return [];\n}\n\nconst targetChatId = previewEnabled ? previewChatRaw : DEFAULT_CHAT_ID;\nconst runId = `reminder-${localNow.date}-${Math.random().toString(36).slice(2, 10)}`;\n\nreturn [{\n  json: {\n    runId,\n    status: 'reminder',\n    createdAt: localNow.iso,\n    chatId: targetChatId,\n    previewMode: previewEnabled,\n    previewChatId: targetChatId,\n    reminderEnabled,\n    reminderDate: localNow.date,\n    reminderWeekday: localNow.weekday,\n    reminderTime,\n    reminderTimezone,\n    reminderForceSend: forceSend,\n    reminderKey: `${targetChatId}:${localNow.date}`,\n    reminderOptInUsersCount: 1,\n    reminder_opt_in_users_count: 1,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -64,
+        0
+      ],
+      "id": "df4f8ba5-ee5a-4e08-b414-6498627cd5ec",
+      "name": "Build Reminder Context"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Build Reminder Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "0ec5a60d-494d-4454-b204-e20f014ef96a",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "RcSbRm5dK7sF2xY4",
+  "tags": []
+}
