@@ -196,12 +196,17 @@ import_patched_workflow() {
 execute_workflow() {
   local log_file=$1
   local env_prefix=$2
+  local cli_broker_port="${N8N_RUNNERS_BROKER_PORT_CLI:-5681}"
+  local cli_env_prefix="N8N_RUNNERS_BROKER_PORT=${cli_broker_port}"
+  if [[ -n "${env_prefix}" ]]; then
+    cli_env_prefix="${cli_env_prefix} ${env_prefix}"
+  fi
   local timeout_cmd status
 
   timeout_cmd="$(command -v gtimeout || command -v timeout || true)"
   if [[ -n "$timeout_cmd" ]]; then
     set +e
-    $timeout_cmd 90 docker exec -u node "$CID" sh -lc "cd /home/node && $env_prefix n8n execute --rawOutput --id $workflow_id" | tee "$log_file"
+    $timeout_cmd 90 docker exec -u node "$CID" sh -lc "cd /home/node && $cli_env_prefix n8n execute --rawOutput --id $workflow_id" | tee "$log_file"
     status=${PIPESTATUS[0]}
     set -e
     if [[ "$status" -eq 124 || "$status" -eq 143 ]]; then
@@ -213,7 +218,7 @@ execute_workflow() {
       exit "$status"
     fi
   else
-    docker exec -u node "$CID" sh -lc "cd /home/node && $env_prefix n8n execute --rawOutput --id $workflow_id" | tee "$log_file"
+    docker exec -u node "$CID" sh -lc "cd /home/node && $cli_env_prefix n8n execute --rawOutput --id $workflow_id" | tee "$log_file"
   fi
 }
 
