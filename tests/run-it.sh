@@ -24,6 +24,11 @@ NETWORK_NAME="integration_test_network"
 WORKFLOW_NAME_DEFAULT="Running Coach"
 WORKFLOW_NAME="${WORKFLOW_NAME:-$WORKFLOW_NAME_DEFAULT}"
 WORKFLOW_FILE="${WORKFLOW_FILE:-}"
+SUBFLOW_FILES=(
+  "workflows/running_coach_subflow_hr_sync.json"
+  "workflows/running_coach_subflow_telegram_message.json"
+  "workflows/running_coach_subflow_reminder_context.json"
+)
 
 COMPOSE_CMD=(docker compose -f "$COMPOSE_FILE")
 
@@ -248,6 +253,51 @@ patch_workflow() {
         { "node": "Build Reminder Context", "type": "main", "index": 0 }
       ]
   ' "$WORKFLOW_FILE" > "$PATCHED_JSON"
+}
+
+import_subflows() {
+  echo "▶️  Importing subworkflows"
+  for subflow in "${SUBFLOW_FILES[@]}"; do
+    local subflow_path="$REPO_ROOT/$subflow"
+    [[ -f "$subflow_path" ]] || { echo "❌ Missing $subflow_path"; exit 1; }
+    local import_path="$subflow_path"
+
+    # Keep subflow imports test-safe by redirecting external HTTP calls to MockServer.
+    if [[ "$(basename "$subflow")" == "running_coach_subflow_hr_sync.json" ]]; then
+      local patched_subflow="/tmp/itest.$(basename "$subflow")"
+      jq --arg mockUrl "http://mock:1080" '
+        .nodes |= map(
+          if .name == "GET HR Parameters" then
+            .parameters.url = $mockUrl + "/api/v1/athlete/i372001"
+            | .parameters.authentication = "none"
+            | del(.parameters.genericAuthType)
+            | .parameters.sendHeaders = false
+            | .parameters.headerParameters.parameters = []
+            | del(.credentials)
+          else .
+          end
+        )
+      ' "$subflow_path" > "$patched_subflow"
+      import_path="$patched_subflow"
+    fi
+
+    local container_file="/home/node/$(basename "$subflow")"
+    docker cp "$import_path" "$CID:$container_file"
+
+    set +e
+    local import_output
+    import_output="$(docker exec -u node "$CID" sh -lc "cd /home/node && n8n import:workflow --input $(basename "$subflow")")"
+    local import_status=$?
+    set -e
+
+    local clean_import_output
+    clean_import_output="$(echo "$import_output" | sed -E $'s/\\x1B\\[[0-9;]*[A-Za-z]//g')"
+    if [[ "$import_status" -ne 0 ]]; then
+      echo "❌ Subworkflow import failed for $subflow (exit $import_status)"
+      echo "$clean_import_output"
+      exit "$import_status"
+    fi
+  done
 }
 
 execute_workflow() {
@@ -1258,6 +1308,7 @@ CID=$("${COMPOSE_CMD[@]}" ps -q n8n)
 seed_credentials
 seed_weekly_metrics_history
 patch_workflow
+import_subflows
 
 docker cp "$PATCHED_JSON" "$CID:/home/node/itest.workflow.json"
 
