@@ -204,6 +204,54 @@
           "name": "MongoDB account"
         }
       }
+    },
+    {
+      "id": "5b6ae5e7-59e2-4ae2-b983-4f6056b96fc0",
+      "name": "Build Metrics Payload (reminder)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        820
+      ],
+      "parameters": {
+        "jsCode": "const getVar = (key) => {\n  if (typeof $vars !== 'undefined' && $vars[key] != null) return String($vars[key]);\n  if (typeof $env !== 'undefined' && $env[key] != null) return String($env[key]);\n  if (typeof process !== 'undefined' && process.env && process.env[key] != null) return String(process.env[key]);\n  return '';\n};\n\nconst sanitizeLabel = (value) => String(value || 'unknown').toLowerCase().replace(/[^a-z0-9_:.-]+/g, '_').replace(/^_+|_+$/g, '') || 'unknown';\n\nconst metricsEnabledRaw = getVar('RC_METRICS_PUSH_ENABLED').trim();\nconst metricsEnabled = !metricsEnabledRaw || ['1', 'true', 'yes', 'on'].includes(metricsEnabledRaw.toLowerCase());\nif (!metricsEnabled) {\n  return [];\n}\n\nconst baseUrl = getVar('RC_PUSHGATEWAY_URL').trim();\nif (!baseUrl) {\n  return [];\n}\n\nconst envLabel = sanitizeLabel(getVar('RC_METRICS_ENV').trim() || 'prod');\nconst metricName = 'running_coach_run_timestamp_seconds';\nconst workflow = sanitizeLabel('running_coach_reminder');\nconst status = sanitizeLabel(($json.deliveryStatus || '').toLowerCase() === 'failed' ? 'failure' : 'success');\nconst timestampSec = Math.floor(Date.now() / 1000);\nconst metricBody = `${metricName} ${timestampSec}\\n`;\nconst root = baseUrl.replace(/\\/+$/, '');\nconst metricsEndpoint = `${root}/metrics/job/n8n_workflows/workflow/${encodeURIComponent(workflow)}/status/${encodeURIComponent(status)}/env/${encodeURIComponent(envLabel)}`;\n\nreturn [{\n  json: {\n    workflow,\n    status,\n    env: envLabel,\n    metricName,\n    timestampSec,\n    metricBody,\n    metricsEndpoint,\n  }\n}];"
+      }
+    },
+    {
+      "id": "e826b5e6-5330-44b3-8e0f-fb6cfd34a3c1",
+      "name": "Push Workflow Metrics (reminder)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        560,
+        820
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $json.metricsEndpoint }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "text/plain; version=0.0.4"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "textPlain",
+        "body": "={{ $json.metricBody }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      }
     }
   ],
   "pinData": {},
@@ -302,6 +350,22 @@
           },
           {
             "node": "Run Events DB (reminder)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build Metrics Payload (reminder)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Metrics Payload (reminder)": {
+      "main": [
+        [
+          {
+            "node": "Push Workflow Metrics (reminder)",
             "type": "main",
             "index": 0
           }

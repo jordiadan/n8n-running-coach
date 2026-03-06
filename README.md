@@ -241,6 +241,13 @@ For complete rules, see:
 - Validation failures send a Telegram alert before the workflow throws the fallback error.
 - Fly health checks call `/healthz` on the n8n instance.
 - Set n8n variable `RC_TELEGRAM_DEBUG_FOOTER=true` (or env var) to append a debug footer with `run_id` details to Telegram messages.
+- Optional Prometheus Pushgateway metric publishing:
+  - `RC_PUSHGATEWAY_URL=<http(s)://pushgateway-host:9091>`
+  - `RC_METRICS_ENV=prod` (default: `prod`)
+  - `RC_METRICS_PUSH_ENABLED=true` (default: enabled; set `false` to disable)
+- Metric emitted by workflows: `running_coach_run_timestamp_seconds{workflow,status,env}` with `status=success|failure`.
+- Suggested Grafana/PromQL run count query:
+  - `sum by (workflow,status) (changes(running_coach_run_timestamp_seconds[$__range]))`
 
 ## Data Lineage
 

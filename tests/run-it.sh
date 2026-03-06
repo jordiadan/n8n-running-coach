@@ -412,8 +412,12 @@ PY
       "$skip_names" \
       "$(jq -r '.nodes[] | select(.name == "Fallback Trigger") | .name' "$WORKFLOW_FILE")" \
       "$(jq -r '.nodes[] | select(.name == "Build Failure Event") | .name' "$WORKFLOW_FILE")" \
+      "$(jq -r '.nodes[] | select(.name == "Build Metrics Payload (coach failure)") | .name' "$WORKFLOW_FILE")" \
       "$(jq -r '.nodes[] | select(.name == "Run Events DB (failure)") | .name' "$WORKFLOW_FILE")" \
       "$(jq -r '.nodes[] | select(.name == "Send Failure Alert") | .name' "$WORKFLOW_FILE")" \
+      "$(jq -r '.nodes[] | select(.name == "Push Workflow Metrics (coach success)") | .name' "$WORKFLOW_FILE")" \
+      "$(jq -r '.nodes[] | select(.name == "Push Workflow Metrics (coach failure)") | .name' "$WORKFLOW_FILE")" \
+      "$(jq -r '.nodes[] | select(.name == "Push Workflow Metrics (reminder)") | .name' "$WORKFLOW_FILE")" \
     | sed '/^$/d'
   )"
 
