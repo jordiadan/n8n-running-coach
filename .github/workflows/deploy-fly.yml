@@ -279,3 +279,9 @@ jobs:
             "ub4hE4847S8D7hHh" \
             "0" \
             "running_coach_feedback"
+
+          update_or_create_workflow \
+            "workflows/running_coach_reminder_workflow.json" \
+            "RcRmWf8pQ1sL2dN4" \
+            "1" \
+            "running_coach_reminder"

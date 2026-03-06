@@ -11,7 +11,9 @@ COMPOSE_FILE="$REPO_ROOT/docker-compose.itest.yml"
 MOCKS_FILE="$REPO_ROOT/tests/mockserver-expectations.json"
 CREDS_FILE="$REPO_ROOT/tests/credentials/mongo.json"
 PATCHED_JSON="$TMP_DIR/running-coach.itest.json"
+PATCHED_REMINDER_JSON="$TMP_DIR/running-coach-reminder.itest.json"
 EXECUTION_LOG="$TMP_DIR/execution.log"
+EXECUTION_LOG_REMINDER="$TMP_DIR/execution.reminder.log"
 EXECUTION_LOG_REMINDER_DUP="$TMP_DIR/execution.reminder-dup.log"
 EXECUTION_LOG_REMINDER_OPTOUT="$TMP_DIR/execution.reminder-optout.log"
 
@@ -24,6 +26,9 @@ NETWORK_NAME="integration_test_network"
 WORKFLOW_NAME_DEFAULT="Running Coach"
 WORKFLOW_NAME="${WORKFLOW_NAME:-$WORKFLOW_NAME_DEFAULT}"
 WORKFLOW_FILE="${WORKFLOW_FILE:-}"
+REMINDER_WORKFLOW_NAME_DEFAULT="Running Coach Reminder"
+REMINDER_WORKFLOW_NAME="${REMINDER_WORKFLOW_NAME:-$REMINDER_WORKFLOW_NAME_DEFAULT}"
+REMINDER_WORKFLOW_FILE="${REMINDER_WORKFLOW_FILE:-}"
 
 COMPOSE_CMD=(docker compose -f "$COMPOSE_FILE")
 
@@ -86,21 +91,27 @@ wait_for_service() {
 }
 
 discover_workflow() {
-  if [[ -n "$WORKFLOW_FILE" ]]; then
-    WORKFLOW_FILE="$REPO_ROOT/$WORKFLOW_FILE"
+  local workflow_name=$1
+  local workflow_file=$2
+
+  if [[ -n "$workflow_file" ]]; then
+    if [[ "$workflow_file" != /* ]]; then
+      workflow_file="$REPO_ROOT/$workflow_file"
+    fi
+    printf '%s' "$workflow_file"
     return
   fi
 
-  echo "🔎 Looking for workflow named \"$WORKFLOW_NAME\""
+  echo "🔎 Looking for workflow named \"$workflow_name\"" >&2
   while IFS= read -r candidate; do
-    if jq -e --arg name "$WORKFLOW_NAME" '.name? == $name' "$candidate" >/dev/null 2>&1; then
-      WORKFLOW_FILE="$candidate"
-      echo "   Found workflow: $WORKFLOW_FILE"
+    if jq -e --arg name "$workflow_name" '.name? == $name' "$candidate" >/dev/null 2>&1; then
+      echo "   Found workflow: $candidate" >&2
+      printf '%s' "$candidate"
       return
     fi
   done < <(cd "$REPO_ROOT" && find workflows -maxdepth 1 -name '*.json' -print)
 
-  echo "❌ Workflow \"$WORKFLOW_NAME\" not found"
+  echo "❌ Workflow \"$workflow_name\" not found" >&2
   exit 1
 }
 
@@ -227,11 +238,6 @@ patch_workflow() {
         | .typeVersion = 2
         | .parameters = {jsCode: $js_telegram}
         | del(.credentials)
-      elif .name == "Send Reminder Message" then
-        .type = "n8n-nodes-base.code"
-        | .typeVersion = 2
-        | .parameters = {jsCode: $js_telegram}
-        | del(.credentials)
       elif .name == "Send Failure Alert" then
         .type = "n8n-nodes-base.code"
         | .typeVersion = 2
@@ -244,15 +250,36 @@ patch_workflow() {
         [{ "node": "Build Run Event (success)", "type": "main", "index": 0 }],
         [{ "node": "Build Run Event (success)", "type": "main", "index": 0 }]
       ]
-    | .connections["Build Run Event (success)"].main[0] += [
-        { "node": "Build Reminder Context", "type": "main", "index": 0 }
-      ]
   ' "$WORKFLOW_FILE" > "$PATCHED_JSON"
 }
 
+patch_reminder_workflow() {
+  echo "▶️  Patching reminder workflow JSON"
+  local js_mock_telegram
+
+  js_mock_telegram=$'return [{\n  json: {\n    ok: true,\n    result: {\n      message_id: 12345,\n      chat: { id: 987654, username: "itest" },\n      date: Math.floor(Date.now() / 1000),\n      text: "Test Telegram message"\n    }\n  }\n}];'
+
+  jq --arg js_telegram "$js_mock_telegram" '
+    .nodes |= map(
+      if .name == "Daily Reminder Trigger" then
+        .type = "n8n-nodes-base.manualTrigger"
+        | .typeVersion = 1
+        | .parameters = {}
+      elif .name == "Send Reminder Message" then
+        .type = "n8n-nodes-base.code"
+        | .typeVersion = 2
+        | .parameters = {jsCode: $js_telegram}
+        | del(.credentials)
+      else .
+      end
+    )
+  ' "$REMINDER_WORKFLOW_FILE" > "$PATCHED_REMINDER_JSON"
+}
+
 execute_workflow() {
-  local log_file=$1
-  local env_prefix=$2
+  local target_workflow_id=$1
+  local log_file=$2
+  local env_prefix=$3
   local cli_broker_port="${N8N_RUNNERS_BROKER_PORT_CLI:-5681}"
   local cli_env_prefix="N8N_RUNNERS_BROKER_PORT=${cli_broker_port}"
   if [[ -n "${env_prefix}" ]]; then
@@ -263,7 +290,7 @@ execute_workflow() {
   timeout_cmd="$(command -v gtimeout || command -v timeout || true)"
   if [[ -n "$timeout_cmd" ]]; then
     set +e
-    $timeout_cmd 120 docker exec -u node "$CID" sh -lc "cd /home/node && $cli_env_prefix n8n execute --rawOutput --id $workflow_id" | tee "$log_file"
+    $timeout_cmd 120 docker exec -u node "$CID" sh -lc "cd /home/node && $cli_env_prefix n8n execute --rawOutput --id $target_workflow_id" | tee "$log_file"
     status=${PIPESTATUS[0]}
     set -e
     if [[ "$status" -eq 124 || "$status" -eq 143 ]]; then
@@ -272,7 +299,7 @@ execute_workflow() {
     fi
   else
     set +e
-    docker exec -u node "$CID" sh -lc "cd /home/node && $cli_env_prefix n8n execute --rawOutput --id $workflow_id" | tee "$log_file"
+    docker exec -u node "$CID" sh -lc "cd /home/node && $cli_env_prefix n8n execute --rawOutput --id $target_workflow_id" | tee "$log_file"
     status=${PIPESTATUS[0]}
     set -e
   fi
@@ -281,6 +308,47 @@ execute_workflow() {
     echo "❌ Workflow execution failed (exit $status)"
     exit "$status"
   fi
+}
+
+import_workflow_and_get_id() {
+  local local_path=$1
+  local container_name=$2
+  local workflow_name=$3
+
+  docker cp "$local_path" "$CID:/home/node/$container_name"
+
+  echo "▶️  Importing workflow: $workflow_name" >&2
+  set +e
+  local import_output
+  import_output="$(docker exec -u node "$CID" sh -lc "cd /home/node && n8n import:workflow --input $container_name")"
+  local import_status=$?
+  set -e
+
+  local clean_import_output
+  clean_import_output="$(echo "$import_output" | sed -E $'s/\\x1B\\[[0-9;]*[A-Za-z]//g')"
+
+  if [[ "$import_status" -ne 0 ]]; then
+    echo "❌ Workflow import failed for $workflow_name (exit $import_status)" >&2
+    echo "$clean_import_output" >&2
+    exit "$import_status"
+  fi
+
+  set +e
+  local imported_workflow_id
+  imported_workflow_id="$(sqlite3 "$N8N_DATA_DIR/database.sqlite" "SELECT id FROM workflow_entity WHERE name = '$workflow_name' ORDER BY updatedAt DESC LIMIT 1;" 2>"$TMP_DIR/sqlite.err")"
+  local sqlite_status=$?
+  set -e
+
+  if [[ "$sqlite_status" -ne 0 || -z "$imported_workflow_id" ]]; then
+    echo "❌ Could not fetch workflow ID for $workflow_name" >&2
+    echo "$clean_import_output" >&2
+    cat "$TMP_DIR/sqlite.err" >&2 || true
+    exit 1
+  fi
+
+  imported_workflow_id="$(echo "$imported_workflow_id" | tr -d '[:space:]')"
+  echo "✅ Workflow \"$workflow_name\" imported with ID $imported_workflow_id" >&2
+  printf '%s' "$imported_workflow_id"
 }
 
 verify_execution() {
@@ -1015,10 +1083,10 @@ if not msg_payload:
 
 if msg_payload.get("shouldSend") is not True:
     raise SystemExit("❌ Reminder should be sendable in opt-in run")
-if msg_payload.get("reminderTime") != "09:30":
-    raise SystemExit(f"❌ reminderTime should reflect config (09:30), got {msg_payload.get('reminderTime')!r}")
-if msg_payload.get("reminderTimezone") != "UTC":
-    raise SystemExit(f"❌ reminderTimezone should reflect config (UTC), got {msg_payload.get('reminderTimezone')!r}")
+if msg_payload.get("reminderTime") != "08:00":
+    raise SystemExit(f"❌ reminderTime should be fixed at 08:00, got {msg_payload.get('reminderTime')!r}")
+if msg_payload.get("reminderTimezone") != "Europe/Madrid":
+    raise SystemExit(f"❌ reminderTimezone should be fixed at Europe/Madrid, got {msg_payload.get('reminderTimezone')!r}")
 session = msg_payload.get("session")
 if not isinstance(session, dict) or not session.get("activity"):
     raise SystemExit("❌ Reminder should include a daily planned session")
@@ -1213,11 +1281,15 @@ require_tool jq
 require_tool docker
 require_tool curl
 require_tool sqlite3
-discover_workflow
+
+WORKFLOW_FILE="$(discover_workflow "$WORKFLOW_NAME" "$WORKFLOW_FILE")"
+REMINDER_WORKFLOW_FILE="$(discover_workflow "$REMINDER_WORKFLOW_NAME" "$REMINDER_WORKFLOW_FILE")"
 
 [[ -f "$COMPOSE_FILE" ]] || { echo "❌ Missing $COMPOSE_FILE"; exit 1; }
 [[ -f "$MOCKS_FILE" ]] || { echo "❌ Missing $MOCKS_FILE"; exit 1; }
 [[ -f "$CREDS_FILE" ]] || { echo "❌ Missing $CREDS_FILE"; exit 1; }
+[[ -f "$WORKFLOW_FILE" ]] || { echo "❌ Missing main workflow: $WORKFLOW_FILE"; exit 1; }
+[[ -f "$REMINDER_WORKFLOW_FILE" ]] || { echo "❌ Missing reminder workflow: $REMINDER_WORKFLOW_FILE"; exit 1; }
 
 docker info >/dev/null 2>&1 || {
   echo "❌ Docker daemon not running"
@@ -1258,39 +1330,13 @@ CID=$("${COMPOSE_CMD[@]}" ps -q n8n)
 seed_credentials
 seed_weekly_metrics_history
 patch_workflow
+patch_reminder_workflow
 
-docker cp "$PATCHED_JSON" "$CID:/home/node/itest.workflow.json"
+workflow_id="$(import_workflow_and_get_id "$PATCHED_JSON" "itest.workflow.json" "$WORKFLOW_NAME")"
+reminder_workflow_id="$(import_workflow_and_get_id "$PATCHED_REMINDER_JSON" "itest.reminder.workflow.json" "$REMINDER_WORKFLOW_NAME")"
 
-echo "▶️  Importing workflow"
-set +e
-import_output="$(docker exec -u node "$CID" sh -lc "cd /home/node && n8n import:workflow --input itest.workflow.json")"
-import_status=$?
-set -e
-
-clean_import_output="$(echo "$import_output" | sed -E $'s/\\x1B\\[[0-9;]*[A-Za-z]//g')"
-
-if [[ "$import_status" -ne 0 ]]; then
-  echo "❌ Workflow import failed (exit $import_status)"
-  echo "$clean_import_output"
-  exit "$import_status"
-fi
-set +e
-workflow_id="$(sqlite3 "$N8N_DATA_DIR/database.sqlite" "SELECT id FROM workflow_entity WHERE name = 'Running Coach' ORDER BY updatedAt DESC LIMIT 1;" 2>"$TMP_DIR/sqlite.err")"
-sqlite_status=$?
-set -e
-
-if [[ "$sqlite_status" -ne 0 || -z "$workflow_id" ]]; then
-  echo "❌ Could not fetch workflow ID from database"
-  echo "$clean_import_output"
-  cat "$TMP_DIR/sqlite.err" || true
-  exit 1
-fi
-workflow_id="$(echo "$workflow_id" | tr -d '[:space:]')"
-
-echo "✅ Workflow imported with ID $workflow_id"
-
-echo "▶️  Executing workflow (reminders opt-in path)"
-execute_workflow "$EXECUTION_LOG" "RC_REMINDER_ENABLED=true RC_REMINDER_FORCE_SEND=true RC_REMINDER_TIME=09:30 RC_REMINDER_TIMEZONE=UTC"
+echo "▶️  Executing main workflow"
+execute_workflow "$workflow_id" "$EXECUTION_LOG" ""
 
 verify_execution
 verify_golden_snapshot
@@ -1299,12 +1345,15 @@ verify_why_this_plan
 verify_preview_mode_metadata
 verify_risk_warning_metadata
 verify_run_event_observability
-verify_reminder_delivery_and_metrics "$EXECUTION_LOG"
+
+echo "▶️  Executing reminder workflow (opt-in path)"
+execute_workflow "$reminder_workflow_id" "$EXECUTION_LOG_REMINDER" "RC_REMINDER_ENABLED=true"
+verify_reminder_delivery_and_metrics "$EXECUTION_LOG_REMINDER"
 
 echo "▶️  Executing workflow (reminder dedupe check)"
-execute_workflow "$EXECUTION_LOG_REMINDER_DUP" "RC_REMINDER_ENABLED=true RC_REMINDER_FORCE_SEND=true RC_REMINDER_TIME=09:30 RC_REMINDER_TIMEZONE=UTC"
+execute_workflow "$reminder_workflow_id" "$EXECUTION_LOG_REMINDER_DUP" "RC_REMINDER_ENABLED=true"
 verify_reminder_daily_dedupe "$EXECUTION_LOG_REMINDER_DUP"
 
 echo "▶️  Executing workflow (reminder opt-out check)"
-execute_workflow "$EXECUTION_LOG_REMINDER_OPTOUT" "RC_REMINDER_ENABLED=false RC_REMINDER_FORCE_SEND=true RC_REMINDER_TIME=09:30 RC_REMINDER_TIMEZONE=UTC"
+execute_workflow "$reminder_workflow_id" "$EXECUTION_LOG_REMINDER_OPTOUT" "RC_REMINDER_ENABLED=false"
 verify_reminder_opt_out "$EXECUTION_LOG_REMINDER_OPTOUT"

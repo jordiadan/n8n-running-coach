@@ -22,6 +22,7 @@ This project collects training and wellness data, computes weekly load/recovery 
 
 Main workflow files:
 - `workflows/running_coach_workflow.json` (weekly planning + delivery)
+- `workflows/running_coach_reminder_workflow.json` (daily reminder delivery)
 - `workflows/running_coach_feedback_workflow.json` (session feedback callback ingestion)
 
 1. Trigger:
@@ -63,6 +64,7 @@ Main workflow files:
 ## Repository Layout
 
 - `workflows/running_coach_workflow.json`: n8n workflow definition.
+- `workflows/running_coach_reminder_workflow.json`: n8n workflow for daily reminder delivery.
 - `workflows/running_coach_feedback_workflow.json`: n8n workflow for session-feedback ingestion.
 - `tests/run-it.sh`: full integration test runner.
 - `tests/mockserver-expectations.json`: mocked API payloads for tests.
@@ -81,7 +83,7 @@ Main workflow files:
 
 ## Workflow Versioning and Deployment
 
-- `workflows/running_coach_workflow.json` and `workflows/running_coach_feedback_workflow.json` are the workflow sources of truth.
+- `workflows/running_coach_workflow.json`, `workflows/running_coach_reminder_workflow.json`, and `workflows/running_coach_feedback_workflow.json` are the workflow sources of truth.
 - Do not edit the workflow directly in the n8n UI except for emergency hotfixes.
 - All workflow changes must go through PRs and update the JSON file.
 - Deployments must import the JSON into n8n so production matches the repo version.
@@ -89,10 +91,10 @@ Main workflow files:
 
 ## Scheduling
 
-The workflow includes a cron schedule expression:
+The production schedules are:
 
-- `0 0 21 * * 0` -> every Sunday at 21:00 (n8n timezone dependent).
-- `0 * * * * *` -> reminder trigger every minute; actual send is gated by reminder config.
+- `Running Coach` workflow: `0 0 21 * * 0` -> every Sunday at 21:00 (n8n timezone dependent).
+- `Running Coach Reminder` workflow: `0 0 8 * * *` -> every day at 08:00 (n8n timezone dependent).
 
 Production timezone is configured in Fly as `Europe/Madrid`.
 Production also prunes n8n execution history aggressively because business audit data lives in MongoDB (`run_events`, `reminder_events`, `feedback_events`) rather than in SQLite execution payload retention.
@@ -103,7 +105,7 @@ This repository currently focuses on integration testing and deployment, not a f
 
 You can:
 
-- Import both workflow JSON files in your n8n instance.
+- Import the three workflow JSON files in your n8n instance.
 - Configure credentials in n8n (Intervals.icu, MongoDB, OpenAI, Telegram).
 - Execute manually from n8n UI.
 
@@ -124,8 +126,8 @@ What the integration test does:
 - Patches workflow for test mode:
   - Replaces live Intervals.icu calls with MockServer URLs.
   - Replaces OpenAI + Telegram nodes with deterministic code nodes.
-- Imports the patched workflow into n8n.
-- Executes it via n8n CLI.
+- Imports the patched main and reminder workflows into n8n.
+- Executes them via n8n CLI.
 - Verifies that all workflow nodes are executed at least once
   (except schedule trigger, which is intentionally skipped).
 - `tests/run-feedback-it.sh` validates session callback parsing, late-feedback gating, and `feedback_events` persistence in the dedicated feedback workflow.
@@ -223,8 +225,7 @@ For complete rules, see:
 - Configure n8n credential `Intervals.icu Basic Auth` (`HTTP Request` -> `Basic Auth`) and use it in Intervals nodes.
 - For that credential use `Username=API_KEY` and `Password=<your Intervals API key>`.
 - Set `RC_REMINDER_ENABLED=true` to opt in to daily reminders.
-- Set `RC_REMINDER_TIME=<HH:MM>` (24-hour) to choose the reminder time.
-- Set `RC_REMINDER_TIMEZONE=<IANA timezone>` (default `Europe/Madrid`) for reminder time evaluation.
+- Daily reminders are fixed to 08:00 in timezone `Europe/Madrid`.
 - Set `RC_REMINDER_FORCE_SEND=true` only for controlled test/debug executions.
 
 ## Observability
