@@ -225,8 +225,7 @@ For complete rules, see:
 - Configure n8n credential `Intervals.icu Basic Auth` (`HTTP Request` -> `Basic Auth`) and use it in Intervals nodes.
 - For that credential use `Username=API_KEY` and `Password=<your Intervals API key>`.
 - Set `RC_REMINDER_ENABLED=true` to opt in to daily reminders.
-- Set `RC_REMINDER_TIME=<HH:MM>` (24-hour) to choose the reminder time.
-- Set `RC_REMINDER_TIMEZONE=<IANA timezone>` (default `Europe/Madrid`) for reminder time evaluation.
+- Daily reminders are fixed to 08:00 in timezone `Europe/Madrid`.
 - Set `RC_REMINDER_FORCE_SEND=true` only for controlled test/debug executions.
 
 ## Observability

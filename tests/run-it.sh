@@ -1083,10 +1083,10 @@ if not msg_payload:
 
 if msg_payload.get("shouldSend") is not True:
     raise SystemExit("❌ Reminder should be sendable in opt-in run")
-if msg_payload.get("reminderTime") != "09:30":
-    raise SystemExit(f"❌ reminderTime should reflect config (09:30), got {msg_payload.get('reminderTime')!r}")
-if msg_payload.get("reminderTimezone") != "UTC":
-    raise SystemExit(f"❌ reminderTimezone should reflect config (UTC), got {msg_payload.get('reminderTimezone')!r}")
+if msg_payload.get("reminderTime") != "08:00":
+    raise SystemExit(f"❌ reminderTime should be fixed at 08:00, got {msg_payload.get('reminderTime')!r}")
+if msg_payload.get("reminderTimezone") != "Europe/Madrid":
+    raise SystemExit(f"❌ reminderTimezone should be fixed at Europe/Madrid, got {msg_payload.get('reminderTimezone')!r}")
 session = msg_payload.get("session")
 if not isinstance(session, dict) or not session.get("activity"):
     raise SystemExit("❌ Reminder should include a daily planned session")
@@ -1347,13 +1347,13 @@ verify_risk_warning_metadata
 verify_run_event_observability
 
 echo "▶️  Executing reminder workflow (opt-in path)"
-execute_workflow "$reminder_workflow_id" "$EXECUTION_LOG_REMINDER" "RC_REMINDER_ENABLED=true RC_REMINDER_FORCE_SEND=true RC_REMINDER_TIME=09:30 RC_REMINDER_TIMEZONE=UTC"
+execute_workflow "$reminder_workflow_id" "$EXECUTION_LOG_REMINDER" "RC_REMINDER_ENABLED=true"
 verify_reminder_delivery_and_metrics "$EXECUTION_LOG_REMINDER"
 
 echo "▶️  Executing workflow (reminder dedupe check)"
-execute_workflow "$reminder_workflow_id" "$EXECUTION_LOG_REMINDER_DUP" "RC_REMINDER_ENABLED=true RC_REMINDER_FORCE_SEND=true RC_REMINDER_TIME=09:30 RC_REMINDER_TIMEZONE=UTC"
+execute_workflow "$reminder_workflow_id" "$EXECUTION_LOG_REMINDER_DUP" "RC_REMINDER_ENABLED=true"
 verify_reminder_daily_dedupe "$EXECUTION_LOG_REMINDER_DUP"
 
 echo "▶️  Executing workflow (reminder opt-out check)"
-execute_workflow "$reminder_workflow_id" "$EXECUTION_LOG_REMINDER_OPTOUT" "RC_REMINDER_ENABLED=false RC_REMINDER_FORCE_SEND=true RC_REMINDER_TIME=09:30 RC_REMINDER_TIMEZONE=UTC"
+execute_workflow "$reminder_workflow_id" "$EXECUTION_LOG_REMINDER_OPTOUT" "RC_REMINDER_ENABLED=false"
 verify_reminder_opt_out "$EXECUTION_LOG_REMINDER_OPTOUT"
