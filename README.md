@@ -245,7 +245,9 @@ For complete rules, see:
   - `RC_PUSHGATEWAY_URL=<http(s)://pushgateway-host:9091>`
   - `RC_METRICS_ENV=prod` (default: `prod`)
   - `RC_METRICS_PUSH_ENABLED=true` (default: enabled; set `false` to disable)
-- Metric emitted by workflows: `running_coach_runs_total{workflow,status,env}` with `status=success|failure`.
+- Metric emitted by workflows: `running_coach_run_timestamp_seconds{workflow,status,env}` with `status=success|failure`.
+- Suggested Grafana/PromQL run count query:
+  - `sum by (workflow,status) (changes(running_coach_run_timestamp_seconds[$__range]))`
 
 ## Data Lineage
 
