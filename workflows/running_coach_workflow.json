@@ -664,7 +664,7 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "0 * * * * *"
+              "expression": "0 0 8 * * *"
             }
           ]
         }

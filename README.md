@@ -92,7 +92,7 @@ Main workflow files:
 The workflow includes a cron schedule expression:
 
 - `0 0 21 * * 0` -> every Sunday at 21:00 (n8n timezone dependent).
-- `0 * * * * *` -> reminder trigger every minute; actual send is gated by reminder config.
+- `0 0 8 * * *` -> reminder trigger every day at 08:00 (n8n timezone dependent).
 
 Production timezone is configured in Fly as `Europe/Madrid`.
 Production also prunes n8n execution history aggressively because business audit data lives in MongoDB (`run_events`, `reminder_events`, `feedback_events`) rather than in SQLite execution payload retention.
