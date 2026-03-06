@@ -778,6 +778,102 @@
       ],
       "id": "b200014f-339b-45d2-8dc4-7cf10b38cbe4",
       "name": "Merge Request + HR Params"
+    },
+    {
+      "id": "7d41b47b-985e-4e5f-a7bd-ddf7afdcb869",
+      "name": "Build Metrics Payload (coach success)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        140
+      ],
+      "parameters": {
+        "jsCode": "const getVar = (key) => {\n  if (typeof $vars !== 'undefined' && $vars[key] != null) return String($vars[key]);\n  if (typeof $env !== 'undefined' && $env[key] != null) return String($env[key]);\n  if (typeof process !== 'undefined' && process.env && process.env[key] != null) return String(process.env[key]);\n  return '';\n};\n\nconst sanitizeLabel = (value) => String(value || 'unknown').toLowerCase().replace(/[^a-z0-9_:.-]+/g, '_').replace(/^_+|_+$/g, '') || 'unknown';\n\nconst metricsEnabledRaw = getVar('RC_METRICS_PUSH_ENABLED').trim();\nconst metricsEnabled = !metricsEnabledRaw || ['1', 'true', 'yes', 'on'].includes(metricsEnabledRaw.toLowerCase());\nif (!metricsEnabled) {\n  return [];\n}\n\nconst baseUrl = getVar('RC_PUSHGATEWAY_URL').trim();\nif (!baseUrl) {\n  return [];\n}\n\nconst envLabel = sanitizeLabel(getVar('RC_METRICS_ENV').trim() || 'prod');\nconst metricName = 'running_coach_runs_total';\nconst workflow = sanitizeLabel('running_coach');\nconst status = sanitizeLabel('success');\nconst metricBody = `${metricName}{workflow=\"${workflow}\",status=\"${status}\",env=\"${envLabel}\"} 1\\n`;\nconst root = baseUrl.replace(/\\/+$/, '');\nconst metricsEndpoint = `${root}/metrics/job/n8n_workflows/workflow/${encodeURIComponent(workflow)}/status/${encodeURIComponent(status)}/env/${encodeURIComponent(envLabel)}`;\n\nreturn [{\n  json: {\n    workflow,\n    status,\n    env: envLabel,\n    metricName,\n    metricBody,\n    metricsEndpoint,\n  }\n}];"
+      }
+    },
+    {
+      "id": "e380ce02-5826-4f73-b693-88a0ad566f79",
+      "name": "Push Workflow Metrics (coach success)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2000,
+        140
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $json.metricsEndpoint }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "text/plain; version=0.0.4"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "textPlain",
+        "body": "={{ $json.metricBody }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "4a4bf0f4-f7f2-44b6-a0cd-8673b51b3eef",
+      "name": "Build Metrics Payload (coach failure)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2480,
+        1120
+      ],
+      "parameters": {
+        "jsCode": "const getVar = (key) => {\n  if (typeof $vars !== 'undefined' && $vars[key] != null) return String($vars[key]);\n  if (typeof $env !== 'undefined' && $env[key] != null) return String($env[key]);\n  if (typeof process !== 'undefined' && process.env && process.env[key] != null) return String(process.env[key]);\n  return '';\n};\n\nconst sanitizeLabel = (value) => String(value || 'unknown').toLowerCase().replace(/[^a-z0-9_:.-]+/g, '_').replace(/^_+|_+$/g, '') || 'unknown';\n\nconst metricsEnabledRaw = getVar('RC_METRICS_PUSH_ENABLED').trim();\nconst metricsEnabled = !metricsEnabledRaw || ['1', 'true', 'yes', 'on'].includes(metricsEnabledRaw.toLowerCase());\nif (!metricsEnabled) {\n  return [];\n}\n\nconst baseUrl = getVar('RC_PUSHGATEWAY_URL').trim();\nif (!baseUrl) {\n  return [];\n}\n\nconst envLabel = sanitizeLabel(getVar('RC_METRICS_ENV').trim() || 'prod');\nconst metricName = 'running_coach_runs_total';\nconst workflow = sanitizeLabel('running_coach');\nconst status = sanitizeLabel('failure');\nconst metricBody = `${metricName}{workflow=\"${workflow}\",status=\"${status}\",env=\"${envLabel}\"} 1\\n`;\nconst root = baseUrl.replace(/\\/+$/, '');\nconst metricsEndpoint = `${root}/metrics/job/n8n_workflows/workflow/${encodeURIComponent(workflow)}/status/${encodeURIComponent(status)}/env/${encodeURIComponent(envLabel)}`;\n\nreturn [{\n  json: {\n    workflow,\n    status,\n    env: envLabel,\n    metricName,\n    metricBody,\n    metricsEndpoint,\n  }\n}];"
+      }
+    },
+    {
+      "id": "74f9c475-1a7d-4e76-a975-433203cfa430",
+      "name": "Push Workflow Metrics (coach failure)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2720,
+        1120
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $json.metricsEndpoint }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "text/plain; version=0.0.4"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "textPlain",
+        "body": "={{ $json.metricBody }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      }
     }
   ],
   "pinData": {},
@@ -1077,6 +1173,11 @@
             "node": "Build Telegram Message",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Build Metrics Payload (coach success)",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -1091,6 +1192,11 @@
           },
           {
             "node": "Build Run Artifact (outputs)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build Metrics Payload (coach failure)",
             "type": "main",
             "index": 0
           }
@@ -1184,6 +1290,28 @@
         [
           {
             "node": "Sync HR Zones",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Metrics Payload (coach success)": {
+      "main": [
+        [
+          {
+            "node": "Push Workflow Metrics (coach success)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Metrics Payload (coach failure)": {
+      "main": [
+        [
+          {
+            "node": "Push Workflow Metrics (coach failure)",
             "type": "main",
             "index": 0
           }

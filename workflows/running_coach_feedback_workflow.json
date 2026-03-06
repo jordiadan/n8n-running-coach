@@ -94,6 +94,54 @@
           "name": "Telegram account"
         }
       }
+    },
+    {
+      "id": "67667021-e603-4d56-854a-a493f6b6bc9d",
+      "name": "Build Metrics Payload (feedback)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        -320
+      ],
+      "parameters": {
+        "jsCode": "const getVar = (key) => {\n  if (typeof $vars !== 'undefined' && $vars[key] != null) return String($vars[key]);\n  if (typeof $env !== 'undefined' && $env[key] != null) return String($env[key]);\n  if (typeof process !== 'undefined' && process.env && process.env[key] != null) return String(process.env[key]);\n  return '';\n};\n\nconst sanitizeLabel = (value) => String(value || 'unknown').toLowerCase().replace(/[^a-z0-9_:.-]+/g, '_').replace(/^_+|_+$/g, '') || 'unknown';\n\nconst metricsEnabledRaw = getVar('RC_METRICS_PUSH_ENABLED').trim();\nconst metricsEnabled = !metricsEnabledRaw || ['1', 'true', 'yes', 'on'].includes(metricsEnabledRaw.toLowerCase());\nif (!metricsEnabled) {\n  return [];\n}\n\nconst baseUrl = getVar('RC_PUSHGATEWAY_URL').trim();\nif (!baseUrl) {\n  return [];\n}\n\nconst envLabel = sanitizeLabel(getVar('RC_METRICS_ENV').trim() || 'prod');\nconst metricName = 'running_coach_runs_total';\nconst workflow = sanitizeLabel('running_coach_feedback_ingestion');\nconst status = sanitizeLabel('success');\nconst metricBody = `${metricName}{workflow=\"${workflow}\",status=\"${status}\",env=\"${envLabel}\"} 1\\n`;\nconst root = baseUrl.replace(/\\/+$/, '');\nconst metricsEndpoint = `${root}/metrics/job/n8n_workflows/workflow/${encodeURIComponent(workflow)}/status/${encodeURIComponent(status)}/env/${encodeURIComponent(envLabel)}`;\n\nreturn [{\n  json: {\n    workflow,\n    status,\n    env: envLabel,\n    metricName,\n    metricBody,\n    metricsEndpoint,\n  }\n}];"
+      }
+    },
+    {
+      "id": "a081092b-8579-4a57-bbdc-db44d0eb739c",
+      "name": "Push Workflow Metrics (feedback)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        700,
+        -320
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $json.metricsEndpoint }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "text/plain; version=0.0.4"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "textPlain",
+        "body": "={{ $json.metricBody }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      }
     }
   ],
   "pinData": {},
@@ -130,6 +178,22 @@
         [
           {
             "node": "Feedback Events DB",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build Metrics Payload (feedback)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Metrics Payload (feedback)": {
+      "main": [
+        [
+          {
+            "node": "Push Workflow Metrics (feedback)",
             "type": "main",
             "index": 0
           }

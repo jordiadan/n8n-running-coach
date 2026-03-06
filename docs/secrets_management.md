@@ -28,6 +28,7 @@ This document defines how secrets are stored, rotated, and validated for this re
 - OpenAI API key
 - Telegram bot token
 - Intervals.icu credentials
+- `RC_PUSHGATEWAY_URL` (if workflow metrics publishing is enabled)
 - Any provider-specific API keys used by n8n credentials
 
 These must live in n8n credentials and/or platform secret managers, never in tracked files.
