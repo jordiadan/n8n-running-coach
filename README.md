@@ -248,6 +248,8 @@ For complete rules, see:
 - Metric emitted by workflows: `running_coach_run_timestamp_seconds{workflow,status,env}` with `status=success|failure`.
 - Suggested Grafana/PromQL run count query:
   - `sum by (workflow,status) (changes(running_coach_run_timestamp_seconds[$__range]))`
+- Versioned Grafana dashboard JSON (Fly + Prometheus): `grafana/dashboards/running_coach_workflows.json`.
+- Import/setup guide: `docs/grafana_dashboard.md`.
 
 ## Data Lineage
 
