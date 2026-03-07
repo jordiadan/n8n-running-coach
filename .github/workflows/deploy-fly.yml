@@ -104,6 +104,106 @@ jobs:
           PY
           }
 
+          extract_workflow_name() {
+            local src=$1
+            python3 - "$src" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          data = json.loads(Path(sys.argv[1]).read_text())
+          name = data.get("name", "")
+          if not isinstance(name, str) or not name.strip():
+              raise SystemExit("missing workflow name in source JSON")
+          print(name.strip())
+          PY
+          }
+
+          resolve_workflow_id_by_name() {
+            local workflow_name=$1
+            local cursor=""
+            local page=1
+
+            while true; do
+              local list_response="/tmp/workflows.page.${page}.json"
+              local list_url="${base_api}?limit=250"
+              local list_status=""
+              local resolved_id=""
+
+              if [ -n "$cursor" ]; then
+                list_url="${list_url}&cursor=${cursor}"
+              fi
+
+              list_status=$(curl -s -o "$list_response" -w "%{http_code}" \
+                -H "X-N8N-API-KEY: $N8N_API_KEY" \
+                "$list_url" || true)
+
+              if [ "$list_status" != "200" ]; then
+                echo "❌ Failed to list workflows while resolving '${workflow_name}' (status: $list_status)"
+                cat "$list_response" || true
+                exit 1
+              fi
+
+              resolved_id="$(python3 - "$list_response" "$workflow_name" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text() or "{}")
+          workflow_name = sys.argv[2]
+
+          if isinstance(payload, list):
+              items = payload
+          elif isinstance(payload, dict):
+              data = payload.get("data")
+              if isinstance(data, list):
+                  items = data
+              elif isinstance(data, dict):
+                  items = data.get("data") or data.get("items") or data.get("workflows") or []
+              else:
+                  items = payload.get("items") or payload.get("workflows") or []
+          else:
+              items = []
+
+          for item in items:
+              if not isinstance(item, dict):
+                  continue
+              if item.get("name") == workflow_name and item.get("id"):
+                  print(item["id"])
+                  break
+          PY
+              )"
+              if [ -n "$resolved_id" ]; then
+                echo "$resolved_id"
+                return 0
+              fi
+
+              cursor="$(python3 - "$list_response" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text() or "{}")
+          cursor = ""
+          if isinstance(payload, dict):
+              cursor = payload.get("nextCursor") or payload.get("next_cursor") or ""
+              data = payload.get("data")
+              if not cursor and isinstance(data, dict):
+                  cursor = data.get("nextCursor") or data.get("next_cursor") or ""
+              meta = payload.get("meta")
+              if not cursor and isinstance(meta, dict):
+                  cursor = meta.get("nextCursor") or meta.get("next_cursor") or ""
+          if cursor:
+              print(cursor)
+          PY
+              )"
+              if [ -z "$cursor" ]; then
+                return 1
+              fi
+              page=$((page + 1))
+            done
+          }
+
           verify_workflow() {
             local local_path=$1
             local remote_path=$2
@@ -208,7 +308,20 @@ jobs:
             local remote="/tmp/${label}.remote.json"
             local response="/tmp/${label}.response.json"
             local api_url="${base_api}/${workflow_id}"
+            local workflow_name=""
+            local resolved_workflow_id=""
             local status=""
+
+            workflow_name="$(extract_workflow_name "$src")"
+            if resolved_workflow_id="$(resolve_workflow_id_by_name "$workflow_name")"; then
+              workflow_id="$resolved_workflow_id"
+              api_url="${base_api}/${workflow_id}"
+              echo "ℹ️  Resolved ${label} by name '${workflow_name}' -> ${workflow_id}"
+            elif [ "$allow_create" = "0" ]; then
+              echo "ℹ️  ${label} not found by name '${workflow_name}'; will try configured ID ${workflow_id}"
+            else
+              echo "ℹ️  ${label} not found by name '${workflow_name}'; create-on-missing remains enabled"
+            fi
 
             sanitize_workflow "$src" "$payload"
             echo "Updating ${label} (${workflow_id})"
@@ -229,6 +342,20 @@ jobs:
               echo "⏳ ${label} update attempt $attempt failed (status: $status); retrying in 6s..."
               sleep 6
             done
+
+            if [ "$status" = "404" ] && [ "$allow_create" = "1" ]; then
+              if resolved_workflow_id="$(resolve_workflow_id_by_name "$workflow_name")"; then
+                workflow_id="$resolved_workflow_id"
+                api_url="${base_api}/${workflow_id}"
+                echo "ℹ️  Found existing ${label} before create (${workflow_id}); retrying update"
+                status=$(curl -s -o "$response" -w "%{http_code}" \
+                  -X PUT \
+                  -H "X-N8N-API-KEY: $N8N_API_KEY" \
+                  -H "Content-Type: application/json" \
+                  --data-binary @"$payload" \
+                  "$api_url" || true)
+              fi
+            fi
 
             if [ "$status" = "404" ] && [ "$allow_create" = "1" ]; then
               echo "ℹ️  ${label} not found; creating via POST"

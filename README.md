@@ -178,6 +178,7 @@ Deploy action:
 
 - Stages encryption secret in Fly
 - Deploys app using `fly.toml`
+- Updates workflows through n8n public API with idempotent lookup-by-name before create fallback.
 
 Verification behavior:
 
@@ -185,6 +186,12 @@ Verification behavior:
 - Normalizes connection ordering to avoid API response ordering drift.
 - Verifies credential *mapping keys* only (ignores credential IDs/values).
 - Compares only settings keys present in the repo (ignores remote defaults).
+- Uses paginated workflow discovery (`limit=250` + cursor) to avoid duplicate workflow creation in larger instances.
+
+When adding a new workflow to deploy automation:
+
+- Keep workflow `name` stable in the JSON source-of-truth file.
+- Use `update_or_create_workflow` in deploy automation; create fallback is safe because existing IDs are resolved by `name` first.
 
 ## Project Management and Team Workflow
 
