@@ -299,6 +299,141 @@ jobs:
           PY
           }
 
+          extract_workflow_name() {
+            local payload=$1
+            python3 - "$payload" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          content = json.loads(Path(sys.argv[1]).read_text() or "{}")
+          print(content.get("name", ""))
+          PY
+          }
+
+          resolve_workflow_id_by_name() {
+            local target_name=$1
+            local cursor=""
+            local page=1
+
+            while [ $page -le 20 ]; do
+              local list_response="/tmp/workflows.page.${page}.json"
+              local list_status=""
+              local url="${base_api}?limit=250"
+              if [ -n "$cursor" ]; then
+                url="${url}&cursor=${cursor}"
+              fi
+
+              list_status=$(curl -s -o "$list_response" -w "%{http_code}" \
+                -H "X-N8N-API-KEY: $N8N_API_KEY" \
+                "$url" || true)
+
+              if [ "$list_status" != "200" ]; then
+                return 1
+              fi
+
+              local found_id
+              found_id="$(python3 - "$list_response" "$target_name" <<'PY'
+          import datetime as dt
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text() or "{}")
+          target = sys.argv[2]
+
+          if isinstance(payload, dict):
+              if isinstance(payload.get("data"), list):
+                  rows = payload["data"]
+              elif isinstance(payload.get("workflows"), list):
+                  rows = payload["workflows"]
+              else:
+                  rows = []
+          elif isinstance(payload, list):
+              rows = payload
+          else:
+              rows = []
+
+          def parse_epoch(value):
+              if not isinstance(value, str) or not value.strip():
+                  return 0.0
+              val = value.strip().replace("Z", "+00:00")
+              try:
+                  return dt.datetime.fromisoformat(val).timestamp()
+              except ValueError:
+                  return 0.0
+
+          matches = [row for row in rows if isinstance(row, dict) and row.get("name") == target and row.get("id")]
+          if not matches:
+              print("")
+              raise SystemExit(0)
+
+          matches.sort(key=lambda row: (0 if row.get("active") else 1, -parse_epoch(row.get("updatedAt"))))
+          print(matches[0].get("id", ""))
+          PY
+              )"
+
+              if [ -n "$found_id" ]; then
+                echo "$found_id"
+                return 0
+              fi
+
+              cursor="$(python3 - "$list_response" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text() or "{}")
+          if isinstance(payload, dict):
+              print(payload.get("nextCursor") or payload.get("next_cursor") or payload.get("cursor") or "")
+          else:
+              print("")
+          PY
+              )"
+
+              if [ -z "$cursor" ]; then
+                break
+              fi
+              page=$((page + 1))
+            done
+
+            return 1
+          }
+
+          patch_main_subworkflow_ids() {
+            local src=$1
+            local dst=$2
+            local hr_sync_id=$3
+            local telegram_id=$4
+            local reminder_id=$5
+
+            python3 - "$src" "$dst" "$hr_sync_id" "$telegram_id" "$reminder_id" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          src, dst, hr_sync_id, telegram_id, reminder_id = sys.argv[1:6]
+          workflow = json.loads(Path(src).read_text() or "{}")
+
+          replacement_by_node = {
+              "Sync HR Zones": hr_sync_id,
+              "Build Telegram Message": telegram_id,
+              "Build Reminder Context": reminder_id,
+          }
+
+          for node in workflow.get("nodes", []):
+              target = replacement_by_node.get(node.get("name"))
+              if not target:
+                  continue
+              params = node.setdefault("parameters", {})
+              workflow_ref = params.setdefault("workflowId", {})
+              if isinstance(workflow_ref, dict):
+                  workflow_ref["value"] = target
+
+          Path(dst).write_text(json.dumps(workflow, ensure_ascii=False, indent=2) + "\n")
+          PY
+          }
+
           update_or_create_workflow() {
             local src=$1
             local workflow_id=$2
@@ -311,6 +446,7 @@ jobs:
             local workflow_name=""
             local resolved_workflow_id=""
             local status=""
+            local workflow_name=""
 
             workflow_name="$(extract_workflow_name "$src")"
             if resolved_workflow_id="$(resolve_workflow_id_by_name "$workflow_name")"; then
@@ -324,6 +460,7 @@ jobs:
             fi
 
             sanitize_workflow "$src" "$payload"
+            workflow_name="$(extract_workflow_name "$payload")"
             echo "Updating ${label} (${workflow_id})"
 
             for attempt in {1..10}; do
@@ -393,10 +530,41 @@ jobs:
               -H "X-N8N-API-KEY: $N8N_API_KEY" \
               "$api_url"
             verify_workflow "$payload" "$remote" "$label"
+
+            UPDATED_WORKFLOW_ID="$workflow_id"
           }
 
           update_or_create_workflow \
+            "workflows/running_coach_subflow_hr_sync.json" \
+            "RcSbHr6mQ2tL9pN3" \
+            "1" \
+            "running_coach_subflow_hr_sync"
+          subflow_hr_sync_id="$UPDATED_WORKFLOW_ID"
+
+          update_or_create_workflow \
+            "workflows/running_coach_subflow_telegram_message.json" \
+            "RcSbTg4hJ8pR1vW6" \
+            "1" \
+            "running_coach_subflow_telegram_message"
+          subflow_telegram_id="$UPDATED_WORKFLOW_ID"
+
+          update_or_create_workflow \
+            "workflows/running_coach_subflow_reminder_context.json" \
+            "RcSbRm5dK7sF2xY4" \
+            "1" \
+            "running_coach_subflow_reminder_context"
+          subflow_reminder_id="$UPDATED_WORKFLOW_ID"
+
+          patched_main="/tmp/running_coach_main.resolved.json"
+          patch_main_subworkflow_ids \
             "workflows/running_coach_workflow.json" \
+            "$patched_main" \
+            "$subflow_hr_sync_id" \
+            "$subflow_telegram_id" \
+            "$subflow_reminder_id"
+
+          update_or_create_workflow \
+            "$patched_main" \
             "Q9nTNHZ5vUBf58oI" \
             "0" \
             "running_coach_main"

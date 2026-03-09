@@ -24,6 +24,9 @@ Main workflow files:
 - `workflows/running_coach_workflow.json` (weekly planning + delivery)
 - `workflows/running_coach_reminder_workflow.json` (daily reminder delivery)
 - `workflows/running_coach_feedback_workflow.json` (session feedback callback ingestion)
+- `workflows/running_coach_subflow_hr_sync.json` (subworkflow: heart-rate sync orchestration)
+- `workflows/running_coach_subflow_telegram_message.json` (subworkflow: Telegram message composition)
+- `workflows/running_coach_subflow_reminder_context.json` (subworkflow: reminder context gating)
 
 1. Trigger:
    - Manual trigger (`When clicking 'Execute workflow'`)
@@ -66,6 +69,9 @@ Main workflow files:
 - `workflows/running_coach_workflow.json`: n8n workflow definition.
 - `workflows/running_coach_reminder_workflow.json`: n8n workflow for daily reminder delivery.
 - `workflows/running_coach_feedback_workflow.json`: n8n workflow for session-feedback ingestion.
+- `workflows/running_coach_subflow_hr_sync.json`: callable subworkflow for HR profile sync and zone updates.
+- `workflows/running_coach_subflow_telegram_message.json`: callable subworkflow for Telegram message rendering.
+- `workflows/running_coach_subflow_reminder_context.json`: callable subworkflow for reminder-context generation.
 - `tests/run-it.sh`: full integration test runner.
 - `tests/mockserver-expectations.json`: mocked API payloads for tests.
 - `tests/credentials/mongo.json`: n8n credential fixture for Mongo tests.
@@ -83,7 +89,7 @@ Main workflow files:
 
 ## Workflow Versioning and Deployment
 
-- `workflows/running_coach_workflow.json`, `workflows/running_coach_reminder_workflow.json`, and `workflows/running_coach_feedback_workflow.json` are the workflow sources of truth.
+- `workflows/running_coach_workflow.json`, `workflows/running_coach_reminder_workflow.json`, `workflows/running_coach_feedback_workflow.json`, and `workflows/running_coach_subflow_*.json` are workflow sources of truth.
 - Do not edit the workflow directly in the n8n UI except for emergency hotfixes.
 - All workflow changes must go through PRs and update the JSON file.
 - Deployments must import the JSON into n8n so production matches the repo version.
@@ -106,6 +112,7 @@ This repository currently focuses on integration testing and deployment, not a f
 You can:
 
 - Import the three workflow JSON files in your n8n instance.
+- Import all workflow JSON files in your n8n instance.
 - Configure credentials in n8n (Intervals.icu, MongoDB, OpenAI, Telegram).
 - Execute manually from n8n UI.
 

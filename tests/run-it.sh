@@ -29,6 +29,11 @@ WORKFLOW_FILE="${WORKFLOW_FILE:-}"
 REMINDER_WORKFLOW_NAME_DEFAULT="Running Coach Reminder"
 REMINDER_WORKFLOW_NAME="${REMINDER_WORKFLOW_NAME:-$REMINDER_WORKFLOW_NAME_DEFAULT}"
 REMINDER_WORKFLOW_FILE="${REMINDER_WORKFLOW_FILE:-}"
+SUBFLOW_FILES=(
+  "workflows/running_coach_subflow_hr_sync.json"
+  "workflows/running_coach_subflow_telegram_message.json"
+  "workflows/running_coach_subflow_reminder_context.json"
+)
 
 COMPOSE_CMD=(docker compose -f "$COMPOSE_FILE")
 
@@ -274,6 +279,68 @@ patch_reminder_workflow() {
       end
     )
   ' "$REMINDER_WORKFLOW_FILE" > "$PATCHED_REMINDER_JSON"
+}
+
+import_subflows() {
+  echo "▶️  Importing subworkflows"
+  for subflow in "${SUBFLOW_FILES[@]}"; do
+    local subflow_path="$REPO_ROOT/$subflow"
+    [[ -f "$subflow_path" ]] || { echo "❌ Missing $subflow_path"; exit 1; }
+    local import_path="$subflow_path"
+
+    # Keep subflow imports test-safe by redirecting external HTTP calls to MockServer.
+    if [[ "$(basename "$subflow")" == "running_coach_subflow_hr_sync.json" ]]; then
+      local patched_subflow="/tmp/itest.$(basename "$subflow")"
+      jq --arg mockUrl "http://mock:1080" '
+        .nodes |= map(
+          if .name == "GET HR Parameters" then
+            .parameters.url = $mockUrl + "/api/v1/athlete/i372001"
+            | .parameters.authentication = "none"
+            | del(.parameters.genericAuthType)
+            | .parameters.sendHeaders = false
+            | .parameters.headerParameters.parameters = []
+            | del(.credentials)
+          else .
+          end
+        )
+      ' "$subflow_path" > "$patched_subflow"
+      import_path="$patched_subflow"
+    fi
+
+    local container_file="/home/node/$(basename "$subflow")"
+    docker cp "$import_path" "$CID:$container_file"
+
+    set +e
+    local import_output
+    import_output="$(docker exec -u node "$CID" sh -lc "cd /home/node && n8n import:workflow --input $(basename "$subflow")")"
+    local import_status=$?
+    set -e
+
+    local clean_import_output
+    clean_import_output="$(echo "$import_output" | sed -E $'s/\\x1B\\[[0-9;]*[A-Za-z]//g')"
+    if [[ "$import_status" -ne 0 ]]; then
+      echo "❌ Subworkflow import failed for $subflow (exit $import_status)"
+      echo "$clean_import_output"
+      exit "$import_status"
+    fi
+
+    local imported_id
+    imported_id="$(echo "$clean_import_output" | sed -nE 's/.*ID ([A-Za-z0-9]+).*/\1/p' | tail -n1)"
+    if [[ -z "$imported_id" ]]; then
+      imported_id="$(jq -r '.id // empty' "$subflow_path")"
+    fi
+
+    if [[ -z "$imported_id" ]]; then
+      echo "❌ Could not resolve imported subworkflow id for $subflow"
+      echo "$clean_import_output"
+      exit 1
+    fi
+
+    # Execute Workflow nodes can call imported workflows by ID even if inactive.
+    # Avoid host-side sqlite writes here because CI volume ownership can make the
+    # mounted DB file read-only from the runner user.
+    echo "✅ Subworkflow imported (id=$imported_id)"
+  done
 }
 
 execute_workflow() {
@@ -1335,6 +1402,7 @@ seed_credentials
 seed_weekly_metrics_history
 patch_workflow
 patch_reminder_workflow
+import_subflows
 
 workflow_id="$(import_workflow_and_get_id "$PATCHED_JSON" "itest.workflow.json" "$WORKFLOW_NAME")"
 reminder_workflow_id="$(import_workflow_and_get_id "$PATCHED_REMINDER_JSON" "itest.reminder.workflow.json" "$REMINDER_WORKFLOW_NAME")"

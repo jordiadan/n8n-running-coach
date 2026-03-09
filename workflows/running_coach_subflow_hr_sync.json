@@ -1,0 +1,161 @@
+{
+  "name": "Running Coach :: Subflow :: HR Sync",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        320
+      ],
+      "id": "2f3b6e15-bc72-4f1d-bec9-8a1fd3b06c6a",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "collection": "hr_zone_profiles",
+        "options": {
+          "sort": "{ \"updatedAt\": -1 }",
+          "limit": 1
+        },
+        "query": "={\n  \"athleteId\": 372001\n}\n"
+      },
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.2,
+      "position": [
+        -384,
+        480
+      ],
+      "id": "573767c5-0d9a-4430-b1be-1d8169a9b621",
+      "name": "Read Last HR Profile",
+      "alwaysOutputData": true,
+      "credentials": {
+        "mongoDb": {
+          "id": "8KyRHmD3ScRn2PPF",
+          "name": "MongoDB account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://intervals.icu/api/v1/athlete/i372001",
+        "sendHeaders": false,
+        "options": {
+          "redirect": {
+            "redirect": {}
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth"
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -160,
+        480
+      ],
+      "id": "c178495c-9a48-480d-9f5b-6c96be636bbd",
+      "name": "GET HR Parameters",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "wkFXdQK5aocqEcyf",
+          "name": "Intervals.icu Basic Auth"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        128,
+        320
+      ],
+      "id": "b200014f-339b-45d2-8dc4-7cf10b38cbe4",
+      "name": "Merge Request + HR Params"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ATHLETE_ID = 372001;\nconst ZONE_BANDS = [\n  ['z1', 0.50, 0.59],\n  ['z2', 0.60, 0.69],\n  ['z3', 0.70, 0.79],\n  ['z4', 0.80, 0.89],\n  ['z5', 0.90, 1.00],\n];\n\nconst isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);\n\nconst toNumber = (value) => {\n  if (value === null || value === undefined || value === '') return null;\n  const parsed = Number(value);\n  return Number.isFinite(parsed) ? parsed : null;\n};\n\nconst getNodeItemsSafe = (nodeName) => {\n  try {\n    const nodeItems = $items(nodeName);\n    return Array.isArray(nodeItems) ? nodeItems : [];\n  } catch {\n    return [];\n  }\n};\n\nconst getByPath = (obj, path) => {\n  if (!isObject(obj)) return undefined;\n  const parts = path.split('.');\n  let cursor = obj;\n  for (const part of parts) {\n    if (!isObject(cursor) || !Object.prototype.hasOwnProperty.call(cursor, part)) {\n      return undefined;\n    }\n    cursor = cursor[part];\n  }\n  return cursor;\n};\n\nconst pickNumber = (obj, paths) => {\n  for (const path of paths) {\n    const value = toNumber(getByPath(obj, path));\n    if (value !== null) return value;\n  }\n  return null;\n};\n\nconst normalizeZones = (raw) => {\n  if (!isObject(raw)) return null;\n  const keys = ['z1', 'z2', 'z3', 'z4', 'z5'];\n  const normalized = {};\n\n  for (const key of keys) {\n    const zone = raw[key];\n    if (!isObject(zone)) return null;\n    const min = toNumber(zone.min);\n    const max = toNumber(zone.max);\n    if (min === null || max === null || min > max) return null;\n    normalized[key] = { min: Math.round(min), max: Math.round(max) };\n  }\n\n  return normalized;\n};\n\nconst computeHrrZones = (hrMax, hrRest) => {\n  const reserve = hrMax - hrRest;\n  const zones = {};\n  for (const [key, lowPct, highPct] of ZONE_BANDS) {\n    zones[key] = {\n      min: Math.round(hrRest + reserve * lowPct),\n      max: Math.round(hrRest + reserve * highPct),\n    };\n  }\n  return zones;\n};\n\nconst hasRunType = (types) => Array.isArray(types)\n  && types.some((type) => typeof type === 'string' && /run/i.test(type));\n\nconst pickRunSport = (payload) => {\n  if (!isObject(payload) || !Array.isArray(payload.sportSettings)) return null;\n  return payload.sportSettings.find((entry) => isObject(entry) && hasRunType(entry.types)) || null;\n};\n\nconst expandPayload = (value) => {\n  if (Array.isArray(value)) {\n    return value.filter((entry) => isObject(entry));\n  }\n  if (isObject(value)) {\n    return [value];\n  }\n  return [];\n};\n\nconst pickLatestWellnessRestingHr = (payloads) => {\n  let best = null;\n  let bestScore = -Infinity;\n\n  for (const payload of payloads) {\n    const wellnessRows = Array.isArray(payload.wellness) ? payload.wellness : [];\n    for (let index = 0; index < wellnessRows.length; index += 1) {\n      const row = wellnessRows[index];\n      if (!isObject(row)) continue;\n      const resting = toNumber(row.restingHR ?? row.restingHr ?? row.resting_hr);\n      if (resting === null) continue;\n\n      const tsCandidates = [row.id, row.date, row.updatedAt, row.updated]\n        .filter((value) => typeof value === 'string' && value.trim());\n      let score = -Infinity;\n      for (const value of tsCandidates) {\n        const parsed = Date.parse(value);\n        if (Number.isFinite(parsed)) {\n          score = Math.max(score, parsed);\n        }\n      }\n      if (!Number.isFinite(score)) {\n        score = index;\n      }\n\n      if (score >= bestScore) {\n        bestScore = score;\n        best = resting;\n      }\n    }\n  }\n\n  return best;\n};\n\nconst eq = (a, b) => (a === null && b === null) || a === b;\nconst fmt = (value) => (value === null ? '-' : String(Math.round(value)));\n\nconst incomingPayloads = items\n  .map((item) => (item && item.json ? item.json : null))\n  .flatMap((payload) => expandPayload(payload));\n\nconst hrNodePayloads = getNodeItemsSafe('GET HR Parameters')\n  .map((item) => (item && item.json ? item.json : null))\n  .flatMap((payload) => expandPayload(payload));\n\nconst sourcePayloads = [...hrNodePayloads, ...incomingPayloads];\n\nconst mergedPayload = {};\nfor (const payload of incomingPayloads) {\n  for (const [key, value] of Object.entries(payload)) {\n    if (Array.isArray(value)) {\n      if (!Array.isArray(mergedPayload[key]) || value.length > mergedPayload[key].length) {\n        mergedPayload[key] = value;\n      }\n      continue;\n    }\n    if (isObject(value)) {\n      if (!isObject(mergedPayload[key])) {\n        mergedPayload[key] = {};\n      }\n      for (const [subKey, subValue] of Object.entries(value)) {\n        if (!(subKey in mergedPayload[key]) || mergedPayload[key][subKey] === null || mergedPayload[key][subKey] === '') {\n          mergedPayload[key][subKey] = subValue;\n        }\n      }\n      continue;\n    }\n    if (!(key in mergedPayload) || mergedPayload[key] === null || mergedPayload[key] === '') {\n      mergedPayload[key] = value;\n    }\n  }\n}\n\nconst previousPayload = getNodeItemsSafe('Read Last HR Profile')\n  .map((item) => (item && item.json && isObject(item.json) ? item.json : null))\n  .find((payload) => payload !== null) || {};\n\nconst previous = {\n  hrMax: toNumber(previousPayload.hrMax),\n  hrRest: toNumber(previousPayload.hrRest),\n  lthr: toNumber(previousPayload.lthr),\n  zoneMethod: typeof previousPayload.zoneMethod === 'string' ? previousPayload.zoneMethod : null,\n  computedZones: normalizeZones(previousPayload.computedZones),\n};\n\nconst runSport = sourcePayloads\n  .map((payload) => pickRunSport(payload))\n  .find((sport) => sport !== null) || null;\n\nconst sourceHrMax = toNumber(runSport && runSport.max_hr);\nconst sourceLthr = toNumber(runSport && runSport.lthr);\n\nconst sourceHrRestFromAthlete = sourcePayloads\n  .map((payload) => pickNumber(payload, ['icu_resting_hr', 'hrRest', 'restingHR', 'restingHr', 'resting_hr']))\n  .find((value) => value !== null) || null;\n\nconst sourceHrRestFromWellness = pickLatestWellnessRestingHr(sourcePayloads);\nconst sourceHrRest = sourceHrRestFromAthlete !== null ? sourceHrRestFromAthlete : sourceHrRestFromWellness;\n\nconst validationErrors = [];\nif (sourceHrMax === null) validationErrors.push('missing_hr_max');\nif (sourceHrRest === null) validationErrors.push('missing_hr_rest');\nif (sourceLthr === null) validationErrors.push('missing_lthr');\nif (sourceHrMax !== null && sourceHrRest !== null && sourceHrRest >= sourceHrMax) {\n  validationErrors.push('invalid_hr_rest_gte_hr_max');\n}\nif (sourceHrMax !== null && sourceLthr !== null && sourceHrMax < sourceLthr) {\n  validationErrors.push('invalid_hr_max_lt_lthr');\n}\n\nconst sourceIsValid = validationErrors.length === 0;\n\nlet nextHrMax = previous.hrMax;\nlet nextHrRest = previous.hrRest;\nlet nextLthr = previous.lthr;\nlet nextZoneMethod = previous.zoneMethod;\nlet nextComputedZones = previous.computedZones;\n\nif (sourceIsValid) {\n  nextHrMax = sourceHrMax;\n  nextHrRest = sourceHrRest;\n  nextLthr = sourceLthr;\n  nextZoneMethod = '%HRR';\n  nextComputedZones = computeHrrZones(sourceHrMax, sourceHrRest);\n}\n\nconst hasValidProfile = Number.isFinite(nextHrMax)\n  && Number.isFinite(nextHrRest)\n  && nextHrRest < nextHrMax\n  && (nextLthr === null || (Number.isFinite(nextLthr) && nextHrMax >= nextLthr))\n  && normalizeZones(nextComputedZones) !== null;\n\nconst inputsChanged = sourceIsValid && (\n  !eq(previous.hrMax, sourceHrMax)\n  || !eq(previous.hrRest, sourceHrRest)\n  || !eq(previous.lthr, sourceLthr)\n);\n\nconst zonesUpdated = hasValidProfile && inputsChanged;\nconst persistProfile = hasValidProfile && inputsChanged;\nconst nowIso = new Date().toISOString();\n\nconst incomingRunId = typeof mergedPayload.runId === 'string' && mergedPayload.runId.trim()\n  ? mergedPayload.runId.trim()\n  : null;\nconst runId = incomingRunId || `${nowIso}-${Math.random().toString(36).slice(2, 8)}`;\n\nconst zoneUpdateNotice = zonesUpdated\n  ? `🛠️ Zonas actualizadas: Max ${fmt(previous.hrMax)}→${fmt(nextHrMax)} · Reposo ${fmt(previous.hrRest)}→${fmt(nextHrRest)} · Umbral ${fmt(previous.lthr)}→${fmt(nextLthr)}`\n  : null;\n\nconst hrSyncLog = {\n  run_id: runId,\n  hrMax_old: previous.hrMax,\n  hrMax_new: nextHrMax,\n  hrRest_old: previous.hrRest,\n  hrRest_new: nextHrRest,\n  lthr_old: previous.lthr,\n  lthr_new: nextLthr,\n  zonesUpdated,\n  validationErrors,\n  updatedAt: nowIso,\n};\n\nconst heartRateSync = {\n  athleteId: ATHLETE_ID,\n  hrMax: nextHrMax,\n  hrRest: nextHrRest,\n  lthr: nextLthr,\n  zoneMethod: nextZoneMethod,\n  computedZones: nextComputedZones,\n  updatedAt: nowIso,\n  zonesUpdated,\n  zoneUpdateNotice,\n  persistProfile,\n  validationErrors,\n  hrSyncLog,\n};\n\nreturn [{\n  json: Object.assign({}, mergedPayload, {\n    runId,\n    heartRateSync,\n    heartRate: heartRateSync,\n    hrSyncLog,\n    athleteId: ATHLETE_ID,\n    hrMax: nextHrMax,\n    hrRest: nextHrRest,\n    lthr: nextLthr,\n    zoneMethod: nextZoneMethod,\n    computedZones: nextComputedZones,\n    updatedAt: nowIso,\n    zonesUpdated,\n    zoneUpdateNotice,\n    persistProfile,\n  }),\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        320
+      ],
+      "id": "8f3b291f-b4a7-40cf-8df4-9dd3499a9f90",
+      "name": "Sync HR Zones"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Merge Request + HR Params",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Read Last HR Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Last HR Profile": {
+      "main": [
+        [
+          {
+            "node": "GET HR Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET HR Parameters": {
+      "main": [
+        [
+          {
+            "node": "Merge Request + HR Params",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Request + HR Params": {
+      "main": [
+        [
+          {
+            "node": "Sync HR Zones",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "3e6402ca-2e3f-46d7-af61-5f8f9b476159",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "RcSbHr6mQ2tL9pN3",
+  "tags": []
+}
