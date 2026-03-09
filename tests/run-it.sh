@@ -336,16 +336,10 @@ import_subflows() {
       exit 1
     fi
 
-    sqlite3 "$N8N_DATA_DIR/database.sqlite" \
-      "UPDATE workflow_entity SET active = 1 WHERE id = '$imported_id';" >/dev/null
-
-    local active_state
-    active_state="$(sqlite3 "$N8N_DATA_DIR/database.sqlite" \
-      "SELECT active FROM workflow_entity WHERE id = '$imported_id' LIMIT 1;" 2>/dev/null || true)"
-    if [[ "$active_state" != "1" ]]; then
-      echo "❌ Subworkflow $subflow is not active after import (id=$imported_id)"
-      exit 1
-    fi
+    # Execute Workflow nodes can call imported workflows by ID even if inactive.
+    # Avoid host-side sqlite writes here because CI volume ownership can make the
+    # mounted DB file read-only from the runner user.
+    echo "✅ Subworkflow imported (id=$imported_id)"
   done
 }
 
