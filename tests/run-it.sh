@@ -323,6 +323,29 @@ import_subflows() {
       echo "$clean_import_output"
       exit "$import_status"
     fi
+
+    local imported_id
+    imported_id="$(echo "$clean_import_output" | sed -nE 's/.*ID ([A-Za-z0-9]+).*/\1/p' | tail -n1)"
+    if [[ -z "$imported_id" ]]; then
+      imported_id="$(jq -r '.id // empty' "$subflow_path")"
+    fi
+
+    if [[ -z "$imported_id" ]]; then
+      echo "❌ Could not resolve imported subworkflow id for $subflow"
+      echo "$clean_import_output"
+      exit 1
+    fi
+
+    sqlite3 "$N8N_DATA_DIR/database.sqlite" \
+      "UPDATE workflow_entity SET active = 1 WHERE id = '$imported_id';" >/dev/null
+
+    local active_state
+    active_state="$(sqlite3 "$N8N_DATA_DIR/database.sqlite" \
+      "SELECT active FROM workflow_entity WHERE id = '$imported_id' LIMIT 1;" 2>/dev/null || true)"
+    if [[ "$active_state" != "1" ]]; then
+      echo "❌ Subworkflow $subflow is not active after import (id=$imported_id)"
+      exit 1
+    fi
   done
 }
 
