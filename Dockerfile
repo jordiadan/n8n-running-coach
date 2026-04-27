@@ -1,4 +1,4 @@
-FROM n8nio/n8n:2.10.3
+FROM n8nio/n8n:2.17.7
 WORKDIR /home/node/.n8n
 COPY workflows/running_coach_workflow.json /opt/workflows/running_coach_workflow.json
 ENV DB_TYPE=postgres
